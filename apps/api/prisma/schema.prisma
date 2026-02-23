@@ -65,8 +65,7 @@ model Location {
 
 model Membership {
   id         String   @id @default(uuid())
-  userId     String
-  businessId String
+  userId     StringbusinessId String
   role       Role     @default(STAFF)
   createdAt  DateTime @default(now())
 
@@ -92,6 +91,10 @@ model Service {
 
   staffLinks ServiceStaff[]
   bookings   Booking[]
+
+  @([businessId])
+  @([businessId, active])
+  @([businessId, name])
 }
 
 model Staff {
