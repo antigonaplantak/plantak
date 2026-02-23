@@ -30,7 +30,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   memberships     Membership[]
-  staffProfiles   Staff[]
+  staffProfile    Staff?
   bookings        Booking[]        @relation("CustomerBookings")
   auditLogs       AuditLog[]
   refreshSessions RefreshSession[]
@@ -96,7 +96,7 @@ model Service {
 
 model Staff {
   id         String   @id @default(uuid())
-  userId     String
+  userId     String   @unique
   businessId String
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
@@ -110,7 +110,6 @@ model Staff {
   timeOff      TimeOff[]
   bookings     Booking[]
 
-  @@unique([userId, businessId])
   @@index([businessId])
 }
 

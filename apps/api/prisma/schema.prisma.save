@@ -1,3 +1,4 @@
+212
 generator client {
   provider = "prisma-client-js"
 }
@@ -30,7 +31,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   memberships     Membership[]
-  staffProfiles   Staff[]
+  staffProfile    Staff?
   bookings        Booking[]        @relation("CustomerBookings")
   auditLogs       AuditLog[]
   refreshSessions RefreshSession[]
@@ -96,7 +97,7 @@ model Service {
 
 model Staff {
   id         String   @id @default(uuid())
-  userId     String
+  userId     String   @unique
   businessId String
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
@@ -110,7 +111,6 @@ model Staff {
   timeOff      TimeOff[]
   bookings     Booking[]
 
-  @@unique([userId, businessId])
   @@index([businessId])
 }
 
@@ -208,4 +208,23 @@ enum MemberRole {
   OWNER
   MANAGER
   STAFF
+}
+
+model Service {
+  id              String   @id @default(uuid())
+  businessId      String
+  name            String
+  durationMin     Int
+  bufferBeforeMin Int      @default(0)
+  bufferAfterMin  Int      @default(0)
+  priceCents      Int      @default(0)
+  currency        String   @default("EUR")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([businessId, isActive])
 }
