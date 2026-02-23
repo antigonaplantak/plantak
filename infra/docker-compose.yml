@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16
+    container_name: plantak_db
+    environment:
+      POSTGRES_USER: plantak
+      POSTGRES_PASSWORD: plantak
+      POSTGRES_DB: plantak
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plantak"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - plantak_db:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: plantak_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+    volumes:
+      - plantak_redis:/data
+
+volumes:
+  plantak_db:
+  plantak_redis:
