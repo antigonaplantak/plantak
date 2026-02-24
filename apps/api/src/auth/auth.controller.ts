@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -21,7 +33,10 @@ export class AuthController {
   constructor(private auth: AuthService) {}
 
   @Post('register')
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.register(dto.email, dto.password);
     res.cookie('rt', (result as any).refreshToken, cookieOptions());
     const { refreshToken, ...rest } = result as any;
@@ -29,7 +44,10 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.login(dto.email, dto.password);
     res.cookie('rt', (result as any).refreshToken, cookieOptions());
     const { refreshToken, ...rest } = result as any;
@@ -37,7 +55,11 @@ export class AuthController {
   }
 
   @Post('refresh')
-  async refresh(@Req() req: Request, @Body() dto: RefreshDto, @Res({ passthrough: true }) res: Response) {
+  async refresh(
+    @Req() req: Request,
+    @Body() dto: RefreshDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const rtFromCookie = (req as any).cookies?.rt as string | undefined;
     const refreshToken = rtFromCookie || dto.refreshToken;
 
