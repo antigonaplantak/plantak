@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 
@@ -6,7 +6,7 @@ describe('AuthController', () => {
   let controller: AuthController;
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    const moduleRef = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         {
@@ -15,14 +15,15 @@ describe('AuthController', () => {
             register: jest.fn(),
             login: jest.fn(),
             refresh: jest.fn(),
-            me: jest.fn(),
+            logout: jest.fn(),
             logoutAll: jest.fn(),
+            me: jest.fn(),
           },
         },
       ],
     }).compile();
 
-    controller = module.get<AuthController>(AuthController);
+    controller = moduleRef.get(AuthController);
   });
 
   it('should be defined', () => {
