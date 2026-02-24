@@ -2,12 +2,12 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
   Put,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -23,59 +23,91 @@ import { SetServiceStatusDto } from './dto/set-service-status.dto';
 export class ServicesController {
   constructor(private svc: ServicesService) {}
 
-  @Roles('OWNER', 'MANAGER')
-  @Post('services')
-  create(@Req() req: any, @Body() dto: CreateServiceDto) {
-    return this.svc.create(req.business.id, dto);
+  private businessIdFromHeader(xBusinessId: string | undefined): string {
+    return String(xBusinessId ?? '');
   }
 
-  // includeInactive=true vetëm për OWNER/MANAGER (opsionale – për momentin e lejojmë)
+  @Roles('OWNER', 'MANAGER')
+  @Post('services')
+  create(
+    @Headers('x-business-id') xBusinessId: string | undefined,
+    @Body() dto: CreateServiceDto,
+  ) {
+    return this.svc.create(this.businessIdFromHeader(xBusinessId), dto);
+  }
+
   @Roles('OWNER', 'MANAGER', 'STAFF')
   @Get('services')
-  list(@Req() req: any, @Query('includeInactive') includeInactive?: string) {
-    return this.svc.list(req.business.id, includeInactive === 'true');
+  list(
+    @Headers('x-business-id') xBusinessId: string | undefined,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.svc.list(
+      this.businessIdFromHeader(xBusinessId),
+      includeInactive === 'true',
+    );
   }
 
   @Roles('OWNER', 'MANAGER', 'STAFF')
   @Get('services/:serviceId')
-  get(@Req() req: any, @Param('serviceId') serviceId: string) {
-    return this.svc.get(req.business.id, serviceId);
+  get(
+    @Headers('x-business-id') xBusinessId: string | undefined,
+    @Param('serviceId') serviceId: string,
+  ) {
+    return this.svc.get(this.businessIdFromHeader(xBusinessId), serviceId);
   }
 
   @Roles('OWNER', 'MANAGER')
   @Patch('services/:serviceId')
   update(
-    @Req() req: any,
+    @Headers('x-business-id') xBusinessId: string | undefined,
     @Param('serviceId') serviceId: string,
     @Body() dto: UpdateServiceDto,
   ) {
-    return this.svc.update(req.business.id, serviceId, dto);
+    return this.svc.update(
+      this.businessIdFromHeader(xBusinessId),
+      serviceId,
+      dto,
+    );
   }
 
   @Roles('OWNER', 'MANAGER')
   @Patch('services/:serviceId/status')
   status(
-    @Req() req: any,
+    @Headers('x-business-id') xBusinessId: string | undefined,
     @Param('serviceId') serviceId: string,
     @Body() dto: SetServiceStatusDto,
   ) {
-    return this.svc.status(req.business.id, serviceId, dto.isActive);
+    return this.svc.status(
+      this.businessIdFromHeader(xBusinessId),
+      serviceId,
+      dto.isActive,
+    );
   }
 
-  // Staff ↔ Services (në hapin tjetër)
   @Roles('OWNER', 'MANAGER')
   @Put('staff/:staffId/services')
   replaceStaffServices(
-    @Req() req: any,
+    @Headers('x-business-id') xBusinessId: string | undefined,
     @Param('staffId') staffId: string,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    return this.svc.replaceStaffServices(req.business.id, staffId, body);
+    return this.svc.replaceStaffServices(
+      this.businessIdFromHeader(xBusinessId),
+      staffId,
+      body as any,
+    );
   }
 
   @Roles('OWNER', 'MANAGER', 'STAFF')
   @Get('staff/:staffId/services')
-  staffServices(@Req() req: any, @Param('staffId') staffId: string) {
-    return this.svc.staffServices(req.business.id, staffId);
+  staffServices(
+    @Headers('x-business-id') xBusinessId: string | undefined,
+    @Param('staffId') staffId: string,
+  ) {
+    return this.svc.staffServices(
+      this.businessIdFromHeader(xBusinessId),
+      staffId,
+    );
   }
 }

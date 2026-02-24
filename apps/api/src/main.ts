@@ -4,9 +4,15 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { initSentry } from './observability/sentry';
+import { requestId } from './observability/request-id';
 
 async function bootstrap() {
+  initSentry();
+
   const app = await NestFactory.create(AppModule);
+
+  app.use(requestId);
 
   app.use(cookieParser());
 
@@ -52,4 +58,4 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT || 3000, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();

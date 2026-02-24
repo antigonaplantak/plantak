@@ -21,6 +21,10 @@ export const prismaMock = {
 } as unknown as PrismaClient;
 
 export const jwtMock = {
-  signAsync: jest.fn(async () => 'token'),
-  verifyAsync: jest.fn(async () => ({ sub: 'u1', email: 'a@b.com', role: 'CUSTOMER' })),
+  signAsync: jest.fn(() => 'token'),
+  verifyAsync: jest.fn(() => ({
+    sub: 'u1',
+    email: 'a@b.com',
+    role: 'CUSTOMER',
+  })),
 };

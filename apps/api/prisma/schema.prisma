@@ -82,7 +82,11 @@ model Service {
   locationId  String?
   name        String
   durationMin Int
+  bufferBeforeMin Int @default(0)
+  bufferAfterMin  Int @default(0)
   priceCents  Int
+  currency   String  @default("EUR")
+
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
