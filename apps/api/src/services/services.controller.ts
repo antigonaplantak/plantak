@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { MembershipGuard } from '../common/guards/membership.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -33,20 +44,32 @@ export class ServicesController {
 
   @Roles('OWNER', 'MANAGER')
   @Patch('services/:serviceId')
-  update(@Req() req: any, @Param('serviceId') serviceId: string, @Body() dto: UpdateServiceDto) {
+  update(
+    @Req() req: any,
+    @Param('serviceId') serviceId: string,
+    @Body() dto: UpdateServiceDto,
+  ) {
     return this.svc.update(req.business.id, serviceId, dto);
   }
 
   @Roles('OWNER', 'MANAGER')
   @Patch('services/:serviceId/status')
-  status(@Req() req: any, @Param('serviceId') serviceId: string, @Body() dto: SetServiceStatusDto) {
+  status(
+    @Req() req: any,
+    @Param('serviceId') serviceId: string,
+    @Body() dto: SetServiceStatusDto,
+  ) {
     return this.svc.status(req.business.id, serviceId, dto.isActive);
   }
 
   // Staff ↔ Services (në hapin tjetër)
   @Roles('OWNER', 'MANAGER')
   @Put('staff/:staffId/services')
-  replaceStaffServices(@Req() req: any, @Param('staffId') staffId: string, @Body() body: any) {
+  replaceStaffServices(
+    @Req() req: any,
+    @Param('staffId') staffId: string,
+    @Body() body: any,
+  ) {
     return this.svc.replaceStaffServices(req.business.id, staffId, body);
   }
 

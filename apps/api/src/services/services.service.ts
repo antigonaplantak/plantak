@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -20,8 +24,16 @@ export class ServicesService {
         isActive: dto.isActive ?? true,
       },
       select: {
-        id: true, name: true, durationMin: true, bufferBeforeMin: true, bufferAfterMin: true,
-        priceCents: true, currency: true, isActive: true, createdAt: true, updatedAt: true,
+        id: true,
+        name: true,
+        durationMin: true,
+        bufferBeforeMin: true,
+        bufferAfterMin: true,
+        priceCents: true,
+        currency: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
   }
@@ -34,8 +46,16 @@ export class ServicesService {
       },
       orderBy: { createdAt: 'desc' },
       select: {
-        id: true, name: true, durationMin: true, bufferBeforeMin: true, bufferAfterMin: true,
-        priceCents: true, currency: true, isActive: true, createdAt: true, updatedAt: true,
+        id: true,
+        name: true,
+        durationMin: true,
+        bufferBeforeMin: true,
+        bufferAfterMin: true,
+        priceCents: true,
+        currency: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
   }
@@ -44,8 +64,16 @@ export class ServicesService {
     const svc = await this.prisma.service.findFirst({
       where: { id: serviceId, businessId },
       select: {
-        id: true, name: true, durationMin: true, bufferBeforeMin: true, bufferAfterMin: true,
-        priceCents: true, currency: true, isActive: true, createdAt: true, updatedAt: true,
+        id: true,
+        name: true,
+        durationMin: true,
+        bufferBeforeMin: true,
+        bufferAfterMin: true,
+        priceCents: true,
+        currency: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
     if (!svc) throw new NotFoundException('Service not found');
@@ -64,16 +92,30 @@ export class ServicesService {
       where: { id: serviceId },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.durationMin !== undefined ? { durationMin: dto.durationMin } : {}),
-        ...(dto.bufferBeforeMin !== undefined ? { bufferBeforeMin: dto.bufferBeforeMin } : {}),
-        ...(dto.bufferAfterMin !== undefined ? { bufferAfterMin: dto.bufferAfterMin } : {}),
+        ...(dto.durationMin !== undefined
+          ? { durationMin: dto.durationMin }
+          : {}),
+        ...(dto.bufferBeforeMin !== undefined
+          ? { bufferBeforeMin: dto.bufferBeforeMin }
+          : {}),
+        ...(dto.bufferAfterMin !== undefined
+          ? { bufferAfterMin: dto.bufferAfterMin }
+          : {}),
         ...(dto.priceCents !== undefined ? { priceCents: dto.priceCents } : {}),
         ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
       select: {
-        id: true, name: true, durationMin: true, bufferBeforeMin: true, bufferAfterMin: true,
-        priceCents: true, currency: true, isActive: true, createdAt: true, updatedAt: true,
+        id: true,
+        name: true,
+        durationMin: true,
+        bufferBeforeMin: true,
+        bufferAfterMin: true,
+        priceCents: true,
+        currency: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
   }
@@ -93,7 +135,11 @@ export class ServicesService {
   }
 
   // placeholders (do implementohen kur të vijmë te staff_services)
-  async replaceStaffServices(_businessId: string, _staffId: string, _body: any) {
+  async replaceStaffServices(
+    _businessId: string,
+    _staffId: string,
+    _body: any,
+  ) {
     throw new ForbiddenException('Not implemented yet');
   }
   async staffServices(_businessId: string, _staffId: string) {

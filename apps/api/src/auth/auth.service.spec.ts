@@ -6,33 +6,37 @@ import { PrismaService } from '../prisma/prisma.service';
 describe('AuthService', () => {
   let service: AuthService;
 
-  const prismaMock = {
-    user: {
-      findUnique: jest.fn(),
-      create: jest.fn(),
-    },
-    refreshSession: {
-      create: jest.fn(),
-      findUnique: jest.fn(),
-      deleteMany: jest.fn(),
-    },
-  };
-
-  const jwtMock = {
-    signAsync: jest.fn(),
-    verifyAsync: jest.fn(),
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: PrismaService, useValue: prismaMock },
-        { provide: JwtService, useValue: jwtMock },
+        {
+          provide: PrismaService,
+          useValue: {
+            user: {
+              findUnique: jest.fn(),
+              create: jest.fn(),
+              update: jest.fn(),
+            },
+            refreshSession: {
+              create: jest.fn(),
+              updateMany: jest.fn(),
+              findFirst: jest.fn(),
+              deleteMany: jest.fn(),
+            },
+          },
+        },
+        {
+          provide: JwtService,
+          useValue: {
+            signAsync: jest.fn().mockResolvedValue('token'),
+            verifyAsync: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
-    service = module.get(AuthService);
+    service = module.get<AuthService>(AuthService);
   });
 
   it('should be defined', () => {

@@ -5,20 +5,24 @@ import { AuthService } from './auth.service';
 describe('AuthController', () => {
   let controller: AuthController;
 
-  const authServiceMock = {
-    register: jest.fn(),
-    login: jest.fn(),
-    refresh: jest.fn(),
-    logoutAll: jest.fn(),
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: authServiceMock }],
+      providers: [
+        {
+          provide: AuthService,
+          useValue: {
+            register: jest.fn(),
+            login: jest.fn(),
+            refresh: jest.fn(),
+            me: jest.fn(),
+            logoutAll: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
-    controller = module.get(AuthController);
+    controller = module.get<AuthController>(AuthController);
   });
 
   it('should be defined', () => {

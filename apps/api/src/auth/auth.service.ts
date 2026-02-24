@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -13,12 +17,17 @@ function sha256(input: string) {
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService, private jwt: JwtService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwt: JwtService,
+  ) {}
 
   private accessSecret = process.env.JWT_ACCESS_SECRET!;
   private refreshSecret = process.env.JWT_REFRESH_SECRET!;
   private accessTtlSeconds = Number(process.env.JWT_ACCESS_TTL_SECONDS ?? 900);
-  private refreshTtlSeconds = Number(process.env.JWT_REFRESH_TTL_SECONDS ?? 604800);
+  private refreshTtlSeconds = Number(
+    process.env.JWT_REFRESH_TTL_SECONDS ?? 604800,
+  );
 
   private async audit(actorId: string, action: string, metaJson?: any) {
     try {
@@ -33,7 +42,9 @@ export class AuthService {
   async register(email: string, password: string) {
     email = email.trim().toLowerCase();
     if (!email || !password || password.length < 8) {
-      throw new BadRequestException('Email ose password jo valid (min 8 karaktere).');
+      throw new BadRequestException(
+        'Email ose password jo valid (min 8 karaktere).',
+      );
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
@@ -45,7 +56,11 @@ export class AuthService {
       select: { id: true, email: true, role: true, createdAt: true },
     });
 
-    const tokens = await this.issueTokens(user.id, user.email, user.role as AppRole);
+    const tokens = await this.issueTokens(
+      user.id,
+      user.email,
+      user.role as AppRole,
+    );
     await this.storeRefreshSession(user.id, tokens.refreshToken);
     await this.audit(user.id, 'AUTH_REGISTER', { email });
 
@@ -63,8 +78,17 @@ export class AuthService {
       throw new UnauthorizedException('Kredenciale të gabuara.');
     }
 
-    const safeUser = { id: user.id, email: user.email, role: user.role, createdAt: user.createdAt };
-    const tokens = await this.issueTokens(user.id, user.email, user.role as AppRole);
+    const safeUser = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+    };
+    const tokens = await this.issueTokens(
+      user.id,
+      user.email,
+      user.role as AppRole,
+    );
     await this.storeRefreshSession(user.id, tokens.refreshToken);
     await this.audit(user.id, 'AUTH_LOGIN_SUCCESS', { email });
 
@@ -77,7 +101,9 @@ export class AuthService {
     // verify signature/expiry
     let payload: any;
     try {
-      payload = await this.jwt.verifyAsync(refreshToken, { secret: this.refreshSecret });
+      payload = await this.jwt.verifyAsync(refreshToken, {
+        secret: this.refreshSecret,
+      });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -86,7 +112,12 @@ export class AuthService {
     const tokenHash = sha256(refreshToken);
 
     const session = await this.prisma.refreshSession.findFirst({
-      where: { userId, tokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
+      where: {
+        userId,
+        tokenHash,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
     });
 
     // REUSE DETECTION:
@@ -109,7 +140,11 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('User not found');
 
-    const tokens = await this.issueTokens(user.id, user.email, user.role as AppRole);
+    const tokens = await this.issueTokens(
+      user.id,
+      user.email,
+      user.role as AppRole,
+    );
     await this.storeRefreshSession(user.id, tokens.refreshToken);
     await this.audit(userId, 'AUTH_REFRESH');
 
