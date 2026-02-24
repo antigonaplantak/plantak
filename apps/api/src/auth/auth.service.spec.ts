@@ -1,41 +1,22 @@
-import { Test } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { prismaMock, jwtMock } from '../test/mocks';
 
 describe('AuthService', () => {
   let service: AuthService;
 
   beforeEach(async () => {
-    const moduleRef = await Test.createTestingModule({
+    const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        {
-          provide: PrismaService,
-          useValue: {
-            user: {
-              findUnique: jest.fn(),
-              create: jest.fn(),
-            },
-            refreshSession: {
-              create: jest.fn(),
-              findUnique: jest.fn(),
-              update: jest.fn(),
-              deleteMany: jest.fn(),
-            },
-          },
-        },
-        {
-          provide: JwtService,
-          useValue: {
-            signAsync: jest.fn().mockResolvedValue('token'),
-            verifyAsync: jest.fn().mockResolvedValue({ sub: 'x' }),
-          },
-        },
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: JwtService, useValue: jwtMock },
       ],
     }).compile();
 
-    service = moduleRef.get(AuthService);
+    service = module.get(AuthService);
   });
 
   it('should be defined', () => {
