@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { createHash } from 'crypto';
@@ -29,7 +30,11 @@ export class AuthService {
     process.env.JWT_REFRESH_TTL_SECONDS ?? 604800,
   );
 
-  private async audit(actorId: string, action: string, metaJson?: any) {
+  private async audit(
+    actorId: string,
+    action: string,
+    metaJson?: Prisma.InputJsonValue,
+  ) {
     try {
       await this.prisma.auditLog.create({
         data: { actorId, action, entity: 'AUTH', entityId: actorId, metaJson },
@@ -52,7 +57,7 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await this.prisma.user.create({
-      data: { email, passwordHash, role: 'CUSTOMER' as any },
+      data: { email, passwordHash, role: 'CUSTOMER' as AppRole },
       select: { id: true, email: true, role: true, createdAt: true },
     });
 
@@ -99,9 +104,9 @@ export class AuthService {
     if (!refreshToken) throw new UnauthorizedException('Missing refresh token');
 
     // verify signature/expiry
-    let payload: any;
+    let payload: JwtPayload;
     try {
-      payload = await this.jwt.verifyAsync(refreshToken, {
+      payload = await this.jwt.verifyAsync<JwtPayload>(refreshToken, {
         secret: this.refreshSecret,
       });
     } catch {

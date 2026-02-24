@@ -21,7 +21,7 @@ export class ServicesService {
         bufferAfterMin: dto.bufferAfterMin ?? 0,
         priceCents: dto.priceCents ?? 0,
         currency: dto.currency ?? 'EUR',
-        active: dto.active ?? true,
+        active: dto.isActive ?? true,
       },
       select: {
         id: true,
@@ -103,7 +103,7 @@ export class ServicesService {
           : {}),
         ...(dto.priceCents !== undefined ? { priceCents: dto.priceCents } : {}),
         ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
-        ...(dto.active !== undefined ? { active: dto.active } : {}),
+        ...(dto.isActive !== undefined ? { active: dto.isActive } : {}),
       },
       select: {
         id: true,
@@ -135,14 +135,20 @@ export class ServicesService {
   }
 
   // placeholders (do implementohen kur të vijmë te staff_services)
-  async replaceStaffServices(
-    _businessId: string,
-    _staffId: string,
-    _body: any,
-  ) {
+  replaceStaffServices(_businessId: string, _staffId: string, _body: any) {
+    void _businessId;
+    void _staffId;
+    void _body;
+    void _businessId;
+    void _staffId;
+    void _body;
     throw new ForbiddenException('Not implemented yet');
   }
-  async staffServices(_businessId: string, _staffId: string) {
+  staffServices(_businessId: string, _staffId: string) {
+    void _businessId;
+    void _staffId;
+    void _businessId;
+    void _staffId;
     throw new ForbiddenException('Not implemented yet');
   }
 }
