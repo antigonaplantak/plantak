@@ -21,7 +21,7 @@ export class ServicesService {
         bufferAfterMin: dto.bufferAfterMin ?? 0,
         priceCents: dto.priceCents ?? 0,
         currency: dto.currency ?? 'EUR',
-        isActive: dto.isActive ?? true,
+        active: dto.active ?? true,
       },
       select: {
         id: true,
@@ -31,7 +31,7 @@ export class ServicesService {
         bufferAfterMin: true,
         priceCents: true,
         currency: true,
-        isActive: true,
+        active: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -42,7 +42,7 @@ export class ServicesService {
     return this.prisma.service.findMany({
       where: {
         businessId,
-        ...(includeInactive ? {} : { isActive: true }),
+        ...(includeInactive ? {} : { active: true }),
       },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -53,7 +53,7 @@ export class ServicesService {
         bufferAfterMin: true,
         priceCents: true,
         currency: true,
-        isActive: true,
+        active: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -71,7 +71,7 @@ export class ServicesService {
         bufferAfterMin: true,
         priceCents: true,
         currency: true,
-        isActive: true,
+        active: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -103,7 +103,7 @@ export class ServicesService {
           : {}),
         ...(dto.priceCents !== undefined ? { priceCents: dto.priceCents } : {}),
         ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
-        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        ...(dto.active !== undefined ? { active: dto.active } : {}),
       },
       select: {
         id: true,
@@ -113,14 +113,14 @@ export class ServicesService {
         bufferAfterMin: true,
         priceCents: true,
         currency: true,
-        isActive: true,
+        active: true,
         createdAt: true,
         updatedAt: true,
       },
     });
   }
 
-  async status(businessId: string, serviceId: string, isActive: boolean) {
+  async status(businessId: string, serviceId: string, active: boolean) {
     const exists = await this.prisma.service.findFirst({
       where: { id: serviceId, businessId },
       select: { id: true },
@@ -129,8 +129,8 @@ export class ServicesService {
 
     return this.prisma.service.update({
       where: { id: serviceId },
-      data: { isActive },
-      select: { id: true, isActive: true, updatedAt: true },
+      data: { active },
+      select: { id: true, active: true, updatedAt: true },
     });
   }
 
