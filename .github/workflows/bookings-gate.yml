@@ -1,0 +1,43 @@
+name: bookings-gate
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/bookings-gate.yml"
+  push:
+    branches:
+      - main
+      - master
+      - develop
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/bookings-gate.yml"
+
+jobs:
+  bookings-gate:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Shell checks
+        run: npm run check:shell
+
+      - name: Build
+        run: npm run build

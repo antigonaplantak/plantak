@@ -521,6 +521,7 @@ export class BookingsService {
       });
     }
 
+    await this.cache.delByPrefix(this.cache.key('availability'));
     return res;
   }
 
@@ -598,6 +599,7 @@ export class BookingsService {
       });
     }
 
+    await this.cache.delByPrefix(this.cache.key('availability'));
     return res;
   }
 
