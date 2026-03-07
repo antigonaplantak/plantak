@@ -15,7 +15,7 @@ echo
 echo "== RESTART =="
 (lsof -ti :3001 | xargs -r kill -9 || true)
 : > /tmp/plantak_api.log
-nohup bash -lc "cd ~/code/plantak/apps/api && exec node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
+nohup bash -lc "cd ~/code/plantak/apps/api && exec env THROTTLE_BYPASS_TOKEN="${THROTTLE_BYPASS_TOKEN:-}" node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
 sleep 6
 
 echo
