@@ -25,3 +25,5 @@ node_modules/
 **/*.bak.*
 **/*.snapshot.ts
 **/*.save
+
+apps/web/
