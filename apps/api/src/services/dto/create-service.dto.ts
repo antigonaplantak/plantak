@@ -1,44 +1,56 @@
-import {
-  IsBoolean,
-  IsIn,
-  IsInt,
-  IsOptional,
-  IsString,
-  MaxLength,
-  Min,
-} from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateServiceDto {
   @IsString()
-  @MaxLength(120)
-  name: string;
+  businessId!: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsString()
+  @MaxLength(160)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
 
   @IsInt()
-  @Min(5)
-  durationMin: number;
+  durationMin!: number;
+
+  @IsInt()
+  priceCents!: number;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
 
   @IsOptional()
   @IsInt()
-  @Min(0)
   bufferBeforeMin?: number;
 
   @IsOptional()
   @IsInt()
-  @Min(0)
   bufferAfterMin?: number;
-
-  // ruajmë në cents (p.sh 2500 = 25.00)
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  priceCents?: number;
 
   @IsOptional()
   @IsString()
-  @IsIn(['EUR', 'CHF', 'GBP', 'USD'])
-  currency?: string;
+  visibility?: 'PUBLIC' | 'PRIVATE';
 
   @IsOptional()
   @IsBoolean()
-  isActive?: boolean;
+  onlineBookingEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPinned?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  position?: number;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
 }

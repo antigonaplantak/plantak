@@ -2,108 +2,62 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   Post,
+  Query,
   Req,
-  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import type { Request } from 'express';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { RefreshDto } from './dto/refresh.dto';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
-type Tokens = { accessToken: string; refreshToken: string };
-type AuthResult = { user: unknown } & Tokens;
+type ReqUser = { sub?: string; email?: string; role?: string };
+type ReqWithUser = Request & { user?: ReqUser };
 
-type ReqWithUser = Request & { user?: { sub?: string } };
-
-function cookieOptions() {
-  const isProd = process.env.NODE_ENV === 'production';
-  return {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax' as const,
-    path: '/api/auth/refresh',
-  };
-}
-
-function readCookie(
-  cookieHeader: string | undefined,
-  name: string,
-): string | undefined {
-  if (!cookieHeader) return undefined;
-  // very small cookie parser: "a=1; rt=XYZ; b=2"
-  const parts = cookieHeader.split(';').map((p) => p.trim());
-  for (const p of parts) {
-    const eq = p.indexOf('=');
-    if (eq === -1) continue;
-    const k = p.slice(0, eq);
-    const v = p.slice(eq + 1);
-    if (k === name) return decodeURIComponent(v);
-  }
-  return undefined;
-}
-
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService) {}
+  constructor(private readonly auth: AuthService) {}
 
   @Post('register')
-  async register(
-    @Body() dto: RegisterDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = (await this.auth.register(
-      dto.email,
-      dto.password,
-    )) as AuthResult;
-    res.cookie('rt', result.refreshToken, cookieOptions());
-    return { user: result.user, accessToken: result.accessToken };
+  register(@Body() body: { email: string; password: string }) {
+    return this.auth.register(body.email, body.password);
   }
 
   @Post('login')
-  async login(
-    @Body() dto: LoginDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = (await this.auth.login(
-      dto.email,
-      dto.password,
-    )) as AuthResult;
-    res.cookie('rt', result.refreshToken, cookieOptions());
-    return { user: result.user, accessToken: result.accessToken };
+  login(@Body() body: { email: string; password: string }) {
+    return this.auth.login(body.email, body.password);
   }
 
   @Post('refresh')
-  async refresh(
-    @Headers('cookie') cookieHeader: string | undefined,
-    @Body() dto: RefreshDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const rtFromCookie = readCookie(cookieHeader, 'rt');
-    const refreshToken = rtFromCookie ?? dto.refreshToken;
-
-    const tokens = (await this.auth.refresh(refreshToken)) as Tokens;
-    res.cookie('rt', tokens.refreshToken, cookieOptions());
-    return { accessToken: tokens.accessToken };
+  refresh(@Body() body: { refreshToken: string }) {
+    return this.auth.refresh(body.refreshToken);
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@Req() req: ReqWithUser) {
-    return req.user;
+    return req.user ?? {};
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('logout-all')
-  logoutAll(
-    @Req() req: ReqWithUser,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    res.clearCookie('rt', { path: '/api/auth/refresh' });
-    return this.auth.revokeAllSessions(String(req.user?.sub ?? ''));
+  logoutAll(@Req() req: ReqWithUser) {
+    const userId = String(req.user?.sub ?? '');
+    return this.auth.revokeAllSessions(userId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('context')
+  context(@Req() req: ReqWithUser, @Query('businessId') businessId?: string) {
+    const userId = String(req.user?.sub ?? '');
+    return this.auth.getContext({
+      userId,
+      businessId: String(businessId ?? ''),
+    });
   }
 }

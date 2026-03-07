@@ -1,6 +1,15 @@
-import { IsBoolean } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional } from 'class-validator';
 
 export class SetServiceStatusDto {
+  @IsOptional()
+  @IsIn(["PUBLIC", "PRIVATE"])
+  visibility?: "PUBLIC" | "PRIVATE";
+
+  @IsOptional()
   @IsBoolean()
-  isActive: boolean;
+  onlineBookingEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  archived?: boolean;
 }
