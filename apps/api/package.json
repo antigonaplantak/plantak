@@ -22,7 +22,8 @@
     "smoke:bookings": "bash scripts/smoke_bookings_regression.sh",
     "gate:bookings": "bash scripts/booking_gate_one_shot.sh",
     "load:availability": "node scripts/load_availability_gate.mjs",
-    "worker:outbox": "node dist/outbox/outbox.worker.js"
+    "worker:outbox": "node dist/outbox/outbox.worker.js",
+    "queue:smoke": "node scripts/queue_smoke.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
@@ -40,7 +41,7 @@
     "@sentry/profiling-node": "^10.39.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
-    "bullmq": "^5.70.2",
+    "bullmq": "^5.70.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "cookie-parser": "^1.4.7",

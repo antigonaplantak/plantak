@@ -10,6 +10,7 @@ import { ServicesModule } from './services/services.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { InfraModule } from './infra/infra.module';
+import { QueueModule } from './queue/queue.module';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { SentryFilter } from './common/sentry/sentry.filter';
 
@@ -20,6 +21,7 @@ import { SentryFilter } from './common/sentry/sentry.filter';
   ],
   imports: [
     InfraModule,
+    QueueModule,
 
     StaffInvitesModule,
     PrismaModule,
