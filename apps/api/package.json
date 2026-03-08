@@ -23,7 +23,9 @@
     "gate:bookings": "bash scripts/booking_gate_one_shot.sh",
     "load:availability": "node scripts/load_availability_gate.mjs",
     "worker:outbox": "node dist/outbox/outbox.worker.js",
-    "queue:smoke": "node scripts/queue_smoke.mjs"
+    "queue:smoke": "node scripts/queue_smoke.mjs",
+    "worker:outbox-dispatcher": "node dist/outbox/outbox-dispatcher.worker.js",
+    "outbox:dispatcher:smoke": "node scripts/outbox_dispatcher_smoke.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
