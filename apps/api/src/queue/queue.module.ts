@@ -1,29 +1,27 @@
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { ALL_QUEUE_NAMES } from './queue.constants';
+import { QUEUE_NAMES } from './queue.constants';
+import { DLQ_SUFFIX } from './queue.policy';
 import { QueueService } from './queue.service';
+import { QueueDlqService } from './queue.dlq.service';
+import { QueueRetentionService } from './queue.retention.service';
 
-const bullQueueImports = ALL_QUEUE_NAMES.map((name) =>
-  BullModule.registerQueue({ name }),
-);
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const connection = { url: REDIS_URL };
 
-@Global()
 @Module({
   imports: [
-    BullModule.forRoot({
-      connection: {
-        url: process.env.REDIS_URL || 'redis://localhost:6379',
-        maxRetriesPerRequest: null,
-        enableReadyCheck: false,
-      },
-      defaultJobOptions: {
-        removeOnComplete: 1000,
-        removeOnFail: 5000,
-      },
-    }),
-    ...bullQueueImports,
+    BullModule.forRoot({ connection }),
+    BullModule.registerQueue(
+      { name: QUEUE_NAMES.notifications },
+      { name: QUEUE_NAMES.webhooks },
+      { name: QUEUE_NAMES.syncJobs },
+      { name: `${QUEUE_NAMES.notifications}${DLQ_SUFFIX}` },
+      { name: `${QUEUE_NAMES.webhooks}${DLQ_SUFFIX}` },
+      { name: `${QUEUE_NAMES.syncJobs}${DLQ_SUFFIX}` },
+    ),
   ],
-  providers: [QueueService],
-  exports: [BullModule, QueueService],
+  providers: [QueueService, QueueDlqService, QueueRetentionService],
+  exports: [QueueService, QueueDlqService, QueueRetentionService, BullModule],
 })
 export class QueueModule {}
