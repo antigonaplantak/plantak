@@ -30,3 +30,5 @@ apps/web/
 
 _repo_backups/
 _db_backups/
+
+_db_reports/
