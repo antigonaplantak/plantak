@@ -14,6 +14,11 @@ PGUSER="${PGUSER:-plantak}"
 PGDB="${PGDB:-plantak}"
 RESTORE_DB="restore_check_${STAMP//[-]/_}"
 
+cleanup() {
+  docker exec "$CONTAINER" psql -U "$PGUSER" -d postgres -c "DROP DATABASE IF EXISTS \"$RESTORE_DB\";" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 mkdir -p "$OUT_DIR"
 
 echo "== PG IS READY =="
@@ -37,7 +42,13 @@ docker exec "$CONTAINER" psql -U "$PGUSER" -d postgres -c "CREATE DATABASE \"$RE
 cat "$OUT_DIR/db.dump" | docker exec -i "$CONTAINER" pg_restore -U "$PGUSER" -d "$RESTORE_DB" --no-owner --no-privileges
 
 docker exec "$CONTAINER" psql -U "$PGUSER" -d "$RESTORE_DB" -c '\dt' > "$OUT_DIR/RESTORE_TABLES.txt"
-docker exec "$CONTAINER" psql -U "$PGUSER" -d postgres -c "DROP DATABASE \"$RESTORE_DB\";" >/dev/null
+
+docker exec -i "$CONTAINER" psql -U "$PGUSER" -d "$RESTORE_DB" > "$OUT_DIR/RESTORE_SMOKE.txt" <<'SQL'
+SELECT COUNT(*) AS businesses FROM "Business";
+SELECT COUNT(*) AS staff FROM "Staff";
+SELECT COUNT(*) AS services FROM "Service";
+SELECT COUNT(*) AS bookings FROM "Booking";
+SQL
 echo
 
 echo "== DONE =="
