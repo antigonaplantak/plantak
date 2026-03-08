@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { NotificationsModule } from './notifications/notifications.module';
+import { OutboxModule } from './outbox/outbox.module';
 import { StaffInvitesModule } from './staff-invites/staff-invites.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -28,6 +29,7 @@ import { SentryFilter } from './common/sentry/sentry.filter';
     AvailabilityModule,
     BookingsModule,
     NotificationsModule,
+    OutboxModule,
   ],
 })
 export class AppModule {}
