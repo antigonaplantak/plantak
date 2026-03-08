@@ -25,7 +25,10 @@
     "worker:outbox": "node dist/outbox/outbox.worker.js",
     "queue:smoke": "node scripts/queue_smoke.mjs",
     "worker:outbox-dispatcher": "node dist/outbox/outbox-dispatcher.worker.js",
-    "outbox:dispatcher:smoke": "node scripts/outbox_dispatcher_smoke.mjs"
+    "outbox:dispatcher:smoke": "node scripts/outbox_dispatcher_smoke.mjs",
+    "worker:queue-consumers": "node dist/queue/queue-workers.worker.js",
+    "queue:workers:smoke": "node scripts/queue_workers_smoke.mjs",
+    "queue:workers:verify": "node scripts/queue_workers_verify.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
