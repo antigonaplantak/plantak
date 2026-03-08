@@ -18,24 +18,47 @@ export class SyncJobsProcessor extends WorkerHost {
 
   async process(job: Job<Record<string, unknown>, unknown, string>) {
     const queueName = QUEUE_NAMES.syncJobs;
+    const maxAttempts = Number(job.opts.attempts ?? 1);
+    const currentAttempt = Number(job.attemptsMade ?? 0) + 1;
 
-    if (job.data?.forceFail) {
-      await this.dlq.moveToDlq(queueName, job.name, {
+    try {
+      if ((job.data as any)?.forceFail === true) {
+        throw new Error(
+          `forced failure queue=${queueName} attempt=${currentAttempt}/${maxAttempts}`,
+        );
+      }
+
+      await this.sink.write(queueName, {
         jobId: job.id,
         name: job.name,
+        attemptsMade: currentAttempt,
+        maxAttempts,
         data: job.data,
-        reason: 'forceFail',
       });
-      throw new Error('forced processor failure');
+
+      this.logger.log(
+        `processed sync-jobs job id=${job.id} name=${job.name} attempt=${currentAttempt}/${maxAttempts}`,
+      );
+
+      return { ok: true };
+    } catch (error: any) {
+      this.logger.warn(
+        `failed sync-jobs job id=${job.id} name=${job.name} attempt=${currentAttempt}/${maxAttempts}: ${error?.message || error}`,
+      );
+
+      if (currentAttempt >= maxAttempts) {
+        await this.dlq.moveToDlq(queueName, job.name, {
+          originalQueue: queueName,
+          originalJobId: job.id,
+          attemptsMade: currentAttempt,
+          maxAttempts,
+          failedAt: new Date().toISOString(),
+          error: error?.message || String(error),
+          data: job.data,
+        });
+      }
+
+      throw error;
     }
-
-    await this.sink.write(queueName, {
-      jobId: job.id,
-      name: job.name,
-      data: job.data,
-    });
-
-    this.logger.log(`processed sync-jobs job id=${job.id} name=${job.name}`);
-    return { ok: true };
   }
 }

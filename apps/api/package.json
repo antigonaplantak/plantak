@@ -28,7 +28,15 @@
     "outbox:dispatcher:smoke": "node scripts/outbox_dispatcher_smoke.mjs",
     "worker:queue-consumers": "node dist/queue/queue-workers.worker.js",
     "queue:workers:smoke": "node scripts/queue_workers_smoke.mjs",
-    "queue:workers:verify": "node scripts/queue_workers_verify.mjs"
+    "queue:workers:verify": "node scripts/queue_workers_verify.mjs",
+    "queue:retry:smoke": "node scripts/queue_retry_smoke.mjs",
+    "queue:always-fail:smoke": "node scripts/queue_always_fail_smoke.mjs",
+    "queue:retry:verify": "node scripts/queue_retry_verify.mjs",
+    "queue:reset:inspect": "node scripts/queue_reset_and_inspect.mjs",
+    "queue:dlq:smoke": "node scripts/queue_dlq_smoke.mjs",
+    "queue:retention:run": "node scripts/queue_retention_run.mjs",
+    "queue:retry-dlq:proof": "node scripts/queue_retry_dlq_proof.mjs",
+    "queue:retention:proof": "node scripts/queue_retention_proof.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
