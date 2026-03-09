@@ -23,6 +23,9 @@ async function main() {
   const queue = new Queue(queueName, { connection });
   const dlq = new Queue(dlqQueueName, { connection });
 
+  await queue.obliterate({ force: true }).catch(() => {});
+  await dlq.obliterate({ force: true }).catch(() => {});
+
   const proofId = `proof:notifications:retry-dlq:${Date.now()}`;
   const expectedDlqId = `dlq:${queueName}:${proofId}`;
 
@@ -35,8 +38,8 @@ async function main() {
     },
     {
       jobId: proofId,
-      attempts: 3,
-      backoff: { type: 'fixed', delay: 1000 },
+      attempts: 2,
+      backoff: { type: 'fixed', delay: 500 },
       removeOnComplete: false,
       removeOnFail: false,
     },
@@ -44,7 +47,7 @@ async function main() {
 
   console.log(JSON.stringify({ queuedJobId: String(job.id) }, null, 2));
 
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 20000;
 
   while (Date.now() < deadline) {
     const mainJob = await queue.getJob(proofId);
@@ -55,8 +58,9 @@ async function main() {
     const attemptsMade = mainJob ? Number(mainJob.attemptsMade ?? 0) : -1;
 
     if (
+      mainJob &&
       mainState === 'failed' &&
-      attemptsMade >= 3 &&
+      attemptsMade >= 2 &&
       dlqJob &&
       ['waiting', 'delayed', 'completed'].includes(dlqState)
     ) {
@@ -73,13 +77,14 @@ async function main() {
           2,
         ),
       );
+
       await queue.close();
       await dlq.close();
       await connection.quit();
       process.exit(0);
     }
 
-    await sleep(500);
+    await sleep(300);
   }
 
   const mainJob = await queue.getJob(proofId);
@@ -89,12 +94,13 @@ async function main() {
   console.log(
     JSON.stringify(
       {
-        attemptsMade: mainJob ? Number(mainJob.attemptsMade ?? 0) : null,
+        proofId,
+        expectedDlqId,
         mainState: mainJob ? await mainJob.getState() : 'missing',
+        attemptsMade: mainJob ? Number(mainJob.attemptsMade ?? 0) : null,
         mainQueue: await getCounts(queue),
         dlqState: dlqJob ? await dlqJob.getState() : 'missing',
         dlqQueue: await getCounts(dlq),
-        expectedDlqId,
       },
       null,
       2,
