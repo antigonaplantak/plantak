@@ -46,9 +46,12 @@
     "scheduler:proof": "node scripts/scheduler_cron_discipline_proof.mjs",
     "backpressure:proof": "node scripts/backpressure_global_proof.mjs",
     "ops:runtime:snapshot": "node scripts/ops_runtime_snapshot.mjs",
-    "ops:observability:proof": "node scripts/ops_observability_proof.mjs"
+    "ops:observability:proof": "node scripts/ops_observability_proof.mjs",
+    "ops:queue:alerts": "node scripts/ops_queue_alerts.mjs"
   },
   "dependencies": {
+    "@bull-board/api": "^6.20.3",
+    "@bull-board/express": "^6.20.3",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",

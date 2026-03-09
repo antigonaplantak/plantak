@@ -12,11 +12,14 @@ import { QueueModule } from './queue/queue.module';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { SentryFilter } from './common/sentry/sentry.filter';
 
+import { QueueDashboardModule } from './ops/queue-dashboard.module';
+
 @Module({
   providers: [
     { provide: APP_FILTER, useClass: SentryFilter },
     { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor }],
   imports: [
+    QueueDashboardModule,
     InfraModule,
     QueueModule,
 
