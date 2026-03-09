@@ -4,40 +4,88 @@ on:
   pull_request:
     paths:
       - "apps/api/**"
+      - "pnpm-lock.yaml"
       - ".github/workflows/bookings-gate.yml"
   push:
     branches:
       - main
       - master
       - develop
+      - freeze/**
     paths:
       - "apps/api/**"
+      - "pnpm-lock.yaml"
       - ".github/workflows/bookings-gate.yml"
 
 jobs:
   bookings-gate:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: plantak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U app -d plantak"
+          --health-interval=2s
+          --health-timeout=3s
+          --health-retries=30
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=2s
+          --health-timeout=3s
+          --health-retries=30
+
+    env:
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgresql://app:app@localhost:5432/plantak?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci_access_secret
+      JWT_REFRESH_SECRET: ci_refresh_secret
+      JWT_ACCESS_TTL_MIN: 15
+      JWT_REFRESH_TTL_DAYS: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.2
+
+      - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: apps/api/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install deps
-        run: npm ci
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm -C apps/api exec prisma generate
+
+      - name: Prisma migrate deploy
+        run: pnpm -C apps/api exec prisma migrate deploy
 
       - name: Shell checks
-        run: npm run check:shell
+        run: pnpm -C apps/api run check:shell
 
       - name: Build
-        run: npm run build
+        run: pnpm -C apps/api run build
+
+      - name: Booking gate
+        run: pnpm -C apps/api run gate:bookings
