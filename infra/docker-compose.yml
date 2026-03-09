@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:16
-    container_name: plantak_db
     environment:
       POSTGRES_USER: plantak
       POSTGRES_PASSWORD: plantak
@@ -9,24 +8,58 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U plantak"]
+      test: ["CMD-SHELL", "pg_isready -U plantak -d plantak"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
     volumes:
       - plantak_db:/var/lib/postgresql/data
 
   redis:
     image: redis:7
-    container_name: plantak_redis
     ports:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      retries: 5
+      timeout: 5s
+      retries: 20
     volumes:
       - plantak_redis:/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DATABASE_URL: postgresql://plantak:plantak@db:5432/plantak?schema=public
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-changeme}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-changeme}
+      REFRESH_TOKEN_PEPPER: ${REFRESH_TOKEN_PEPPER:-changeme}
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
+      ENABLE_QUEUE_DASHBOARD: ${ENABLE_QUEUE_DASHBOARD:-false}
+      QUEUE_DASHBOARD_ROUTE: ${QUEUE_DASHBOARD_ROUTE:-/api/ops/queues}
+      QUEUE_DASHBOARD_USER: ${QUEUE_DASHBOARD_USER:-ops}
+      QUEUE_DASHBOARD_PASS: ${QUEUE_DASHBOARD_PASS:-change-this-now}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3001/api/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
 
 volumes:
   plantak_db:
