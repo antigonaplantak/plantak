@@ -39,7 +39,9 @@
     "queue:dlq:list": "node scripts/queue_dlq_list.mjs",
     "queue:dlq:redrive": "node scripts/queue_dlq_redrive.mjs",
     "outbox:crash-recovery:proof": "node scripts/outbox_crash_recovery_proof.mjs",
-    "queue:consumer-idempotency:proof": "node scripts/queue_consumer_idempotency_proof.mjs"
+    "queue:consumer-idempotency:proof": "node scripts/queue_consumer_idempotency_proof.mjs",
+    "outbox:multi-instance:proof": "node scripts/outbox_multi_instance_lease_proof.mjs",
+    "runtime:lease:smoke": "node scripts/runtime_lease_smoke.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",

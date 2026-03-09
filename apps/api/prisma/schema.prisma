@@ -457,3 +457,15 @@ model OutboxEvent {
   @@index([aggregateType, aggregateId, createdAt])
   @@index([businessId, createdAt])
 }
+
+model RuntimeLease {
+  leaseKey     String   @id
+  ownerId      String
+  fencingToken BigInt   @default(0)
+  expiresAt    DateTime
+  heartbeatAt  DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([expiresAt])
+}
