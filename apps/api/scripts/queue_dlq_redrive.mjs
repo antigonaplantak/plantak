@@ -91,14 +91,40 @@ function resolveTargetName(job) {
   return stripDlqPrefix(job.name);
 }
 
-function resolveTargetData(job) {
+function baseTargetData(job) {
   const payload = job.data ?? {};
 
   if (payload && typeof payload.data === 'object' && payload.data !== null) {
-    return payload.data;
+    return { ...payload.data };
   }
 
-  return payload;
+  if (payload && typeof payload === 'object' && payload !== null) {
+    return { ...payload };
+  }
+
+  return { value: payload };
+}
+
+function readPriorRedriveCount(job) {
+  const payload = job.data ?? {};
+  const nested = payload?.data?.redriveCount;
+  const top = payload?.redriveCount;
+
+  if (Number.isFinite(Number(nested))) return Number(nested);
+  if (Number.isFinite(Number(top))) return Number(top);
+  return 0;
+}
+
+function resolveTargetData(job) {
+  const target = baseTargetData(job);
+  const nextCount = readPriorRedriveCount(job) + 1;
+
+  return {
+    ...target,
+    redrivenFromDlqJobId: String(job.id ?? ''),
+    redrivenAt: new Date().toISOString(),
+    redriveCount: nextCount,
+  };
 }
 
 function buildTargetJobId(job, targetName) {
@@ -157,7 +183,7 @@ async function main() {
       removeSource: REMOVE_SOURCE,
       preserveJobId: PRESERVE_JOB_ID,
       dryRun: DRY_RUN,
-      payloadPreview: JSON.stringify(targetData).slice(0, 300),
+      payloadPreview: JSON.stringify(targetData).slice(0, 400),
     };
 
     console.log(JSON.stringify(preview, null, 2));
