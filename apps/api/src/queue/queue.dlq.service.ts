@@ -9,6 +9,21 @@ export class QueueDlqService {
 
   constructor(private readonly queues: QueueService) {}
 
+  private sanitizeJobIdPart(value: string) {
+    const cleaned = value
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 120);
+
+    return cleaned || 'x';
+  }
+
+  private buildDlqJobId(queueName: QueueName, originalJobId?: string) {
+    if (!originalJobId) return undefined;
+
+    return `dlq-${this.sanitizeJobIdPart(queueName)}-${this.sanitizeJobIdPart(originalJobId)}`;
+  }
+
   async moveToDlq(
     queueName: QueueName,
     jobName: string,
@@ -18,14 +33,8 @@ export class QueueDlqService {
     const originalJobId =
       typeof payload.originalJobId === 'string' ? payload.originalJobId : undefined;
 
-    const safeOriginalJobId = originalJobId
-      ? originalJobId.replace(/[^a-zA-Z0-9_-]/g, '_')
-      : undefined;
-
     await this.queues.addRaw(target, `dlq.${jobName}`, payload, {
-      jobId: safeOriginalJobId
-        ? `dlq__${queueName}__${safeOriginalJobId}`
-        : undefined,
+      jobId: this.buildDlqJobId(queueName, originalJobId),
       removeOnComplete: 5000,
       removeOnFail: 5000,
     });

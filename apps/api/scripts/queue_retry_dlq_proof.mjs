@@ -1,148 +1,201 @@
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import IORedis from 'ioredis';
 import { Queue } from 'bullmq';
 
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+const QUEUE_NAME = 'notifications';
+const DLQ_NAME = `${QUEUE_NAME}-dlq`;
+const ATTEMPTS = 3;
+const BACKOFF_MS = 500;
+const TIMEOUT_MS = 30000;
 
-const connection = new IORedis(redisUrl, {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const connection = new IORedis(REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 });
 
-const queueName = 'notifications';
-const dlqQueueName = 'notifications-dlq';
+const queue = new Queue(QUEUE_NAME, { connection });
+const dlq = new Queue(DLQ_NAME, { connection });
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function getCounts(queue) {
-  return queue.getJobCounts('wait', 'active', 'delayed', 'failed', 'completed');
-}
-
-async function findDlqJob(dlq, expectedDlqId, proofId) {
-  const direct = await dlq.getJob(expectedDlqId);
-  if (direct) return direct;
-
-  const jobs = await dlq.getJobs(
-    ['wait', 'active', 'delayed', 'completed', 'failed'],
-    0,
-    20,
-    true,
-  );
-
-  return (
-    jobs.find((job) => {
-      const originalJobId =
-        typeof job?.data?.originalJobId === 'string' ? job.data.originalJobId : '';
-      return originalJobId === proofId;
-    }) || null
-  );
-}
+const marker = `retry-dlq-proof-${Date.now()}`;
+const jobId = `proof_retry_dlq_${Date.now()}`;
 
 async function main() {
-  const queue = new Queue(queueName, { connection });
-  const dlq = new Queue(dlqQueueName, { connection });
+  console.log(`queue=${QUEUE_NAME}`);
+  console.log(`dlq=${DLQ_NAME}`);
+  console.log(`jobId=${jobId}`);
+  console.log(`marker=${marker}`);
 
-  await queue.obliterate({ force: true }).catch(() => {});
-  await dlq.obliterate({ force: true }).catch(() => {});
-
-  const proofId = `proof_notifications_retry_dlq_${Date.now()}`;
-  const expectedDlqId = `dlq__${queueName}__${proofId}`;
-
-  const job = await queue.add(
-    'smoke.notifications.retry-dlq',
+  await queue.add(
+    'proof.retry-dlq',
     {
-      source: 'queue-retry-dlq-proof',
       failMode: 'retry-then-dlq',
-      stamp: Date.now(),
+      marker,
     },
     {
-      jobId: proofId,
-      attempts: 3,
-      backoff: { type: 'fixed', delay: 500 },
-      removeOnComplete: false,
-      removeOnFail: false,
+      jobId,
+      attempts: ATTEMPTS,
+      backoff: { type: 'fixed', delay: BACKOFF_MS },
+      removeOnComplete: 100,
+      removeOnFail: 100,
     },
   );
 
-  console.log(JSON.stringify({ queuedJobId: String(job.id), proofId, expectedDlqId }, null, 2));
-
-  const deadline = Date.now() + 20000;
+  const deadline = Date.now() + TIMEOUT_MS;
+  let finalState = 'unknown';
+  let finalAttempts = 0;
+  let matchedDlqJob = null;
 
   while (Date.now() < deadline) {
-    const mainJob = await queue.getJob(proofId);
-    const dlqJob = await findDlqJob(dlq, expectedDlqId, proofId);
+    const original = await queue.getJob(jobId);
+    finalState = original ? await original.getState() : 'missing';
+    finalAttempts = Number(original?.attemptsMade ?? 0);
 
-    const mainState = mainJob ? await mainJob.getState() : 'missing';
-    const dlqState = dlqJob ? await dlqJob.getState() : 'missing';
-    const attemptsMade = mainJob ? Number(mainJob.attemptsMade ?? 0) : -1;
+    const dlqJobs = await dlq.getJobs(
+      ['wait', 'delayed', 'active', 'completed', 'failed', 'paused'],
+      0,
+      100,
+      true,
+    );
 
-    if (
-      mainJob &&
-      mainState === 'completed' &&
-      attemptsMade >= 2 &&
-      dlqJob &&
-      ['waiting', 'delayed', 'active', 'completed'].includes(dlqState)
-    ) {
-      console.log('== RETRY DLQ PROOF OK ==');
-      console.log(
+    matchedDlqJob =
+      dlqJobs.find((job) => {
+        const data = job.data ?? {};
+        return (
+          data.originalJobId === jobId ||
+          data.marker === marker ||
+          data?.data?.marker === marker
+        );
+      }) ?? null;
+
+    console.log(
+      JSON.stringify({
+        originalState: finalState,
+        originalAttempts: finalAttempts,
+        dlqFound: Boolean(matchedDlqJob),
+      }),
+    );
+
+    if (finalState === 'failed' && finalAttempts === ATTEMPTS && matchedDlqJob) {
+      break;
+    }
+
+    await sleep(750);
+  }
+
+  if (!(finalState === 'failed' && finalAttempts === ATTEMPTS && matchedDlqJob)) {
+    const counts = await queue.getJobCounts(
+      'wait',
+      'active',
+      'completed',
+      'failed',
+      'delayed',
+      'paused',
+      'prioritized',
+      'waiting-children',
+    );
+
+    console.error('RETRY_FINAL_DLQ_PROOF_FAIL');
+    console.error(
+      JSON.stringify(
+        {
+          finalState,
+          finalAttempts,
+          counts,
+          dlqFound: Boolean(matchedDlqJob),
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(1);
+  }
+
+  const dlqData = matchedDlqJob.data ?? {};
+  const attemptsMade = Number(dlqData.attemptsMade ?? 0);
+  const maxAttempts = Number(dlqData.maxAttempts ?? 0);
+
+  if (attemptsMade !== ATTEMPTS || maxAttempts !== ATTEMPTS) {
+    console.error('RETRY_FINAL_DLQ_PROOF_FAIL');
+    console.error(
+      JSON.stringify(
+        {
+          reason: 'DLQ payload attempts mismatch',
+          attemptsMade,
+          maxAttempts,
+          expected: ATTEMPTS,
+          dlqId: String(matchedDlqJob.id ?? ''),
+          dlqData,
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(1);
+  }
+
+  if (String(matchedDlqJob.id ?? '').includes(':')) {
+    console.error('RETRY_FINAL_DLQ_PROOF_FAIL');
+    console.error(
+      JSON.stringify(
+        {
+          reason: 'DLQ job id still contains colon',
+          dlqId: String(matchedDlqJob.id ?? ''),
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(1);
+  }
+
+  const sinkFile = path.join(process.cwd(), '_queue_runs', 'notifications.jsonl');
+  if (existsSync(sinkFile)) {
+    const text = await fs.readFile(sinkFile, 'utf8');
+    if (text.includes(marker)) {
+      console.error('RETRY_FINAL_DLQ_PROOF_FAIL');
+      console.error(
         JSON.stringify(
           {
-            proofId,
-            expectedDlqId,
-            mainState,
-            attemptsMade,
-            dlqState,
-            dlqJobId: String(dlqJob.id),
-            dlqName: dlqJob.name,
-            dlqPayload: dlqJob.data ?? null,
+            reason: 'failed retry->dlq job unexpectedly hit success sink',
+            sinkFile,
+            marker,
           },
           null,
           2,
         ),
       );
-
-      await queue.close();
-      await dlq.close();
-      await connection.quit();
-      process.exit(0);
+      process.exit(1);
     }
-
-    await sleep(300);
   }
 
-  const mainJob = await queue.getJob(proofId);
-  const dlqJob = await findDlqJob(dlq, expectedDlqId, proofId);
-
-  console.log('== RETRY DLQ PROOF TIMEOUT ==');
   console.log(
     JSON.stringify(
       {
-        proofId,
-        expectedDlqId,
-        mainState: mainJob ? await mainJob.getState() : 'missing',
-        attemptsMade: mainJob ? Number(mainJob.attemptsMade ?? 0) : null,
-        mainQueue: await getCounts(queue),
-        dlqFound: Boolean(dlqJob),
-        dlqState: dlqJob ? await dlqJob.getState() : 'missing',
-        dlqQueue: await getCounts(dlq),
-        dlqPayload: dlqJob ? dlqJob.data ?? null : null,
+        finalState,
+        finalAttempts,
+        dlqId: String(matchedDlqJob.id ?? ''),
+        dlqData,
       },
       null,
       2,
     ),
   );
-
-  await queue.close();
-  await dlq.close();
-  await connection.quit();
-  process.exit(1);
+  console.log('RETRY_FINAL_DLQ_PROOF_OK');
 }
 
-main().catch(async (error) => {
-  console.error(error);
-  try {
+main()
+  .catch((err) => {
+    console.error('RETRY_FINAL_DLQ_PROOF_FAIL');
+    console.error(err);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await queue.close();
+    await dlq.close();
     await connection.quit();
-  } catch {}
-  process.exit(1);
-});
+  });

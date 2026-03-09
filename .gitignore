@@ -32,3 +32,6 @@ _repo_backups/
 _db_backups/
 
 _db_reports/
+
+apps/_api_archives/
+apps/api/_queue_runs/

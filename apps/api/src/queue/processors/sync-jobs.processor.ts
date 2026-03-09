@@ -1,14 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
+import { QUEUE_NAMES } from '../queue.constants';
 import { QueueDlqService } from '../queue.dlq.service';
 import { QueueSinkService } from '../queue-sink.service';
 
-@Processor('sync-jobs')
+type JobData = Record<string, unknown>;
+
+@Processor(QUEUE_NAMES.syncJobs)
 @Injectable()
 export class SyncJobsProcessor extends WorkerHost {
   private readonly logger = new Logger(SyncJobsProcessor.name);
-  private readonly queueName = 'sync-jobs' as const;
 
   constructor(
     private readonly sink: QueueSinkService,
@@ -17,67 +19,72 @@ export class SyncJobsProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<any, any, string>): Promise<{ ok: true; movedToDlq?: true }> {
-    const attempts = Number(job.opts.attempts ?? 1);
-    const currentAttempt = Number(job.attemptsMade ?? 0) + 1;
-    const failMode = String(job.data?.failMode ?? '');
+  async process(job: Job<JobData, { ok: true }, string>): Promise<{ ok: true }> {
+    const queueName = QUEUE_NAMES.syncJobs;
+    const data = (job.data ?? {}) as JobData;
+    const attempt = Number(job.attemptsMade ?? 0) + 1;
+    const maxAttempts = Number(job.opts.attempts ?? 1);
 
-    try {
-      if (job.name.includes('.dlq')) {
-        await this.dlq.moveToDlq(this.queueName, job.name, {
-          originalJobId: String(job.id ?? ''),
-          originalQueue: this.queueName,
-          reason: 'explicit-dlq-smoke',
-          data: job.data ?? null,
-        });
+    const failMode =
+      typeof data.failMode === 'string' ? String(data.failMode) : '';
 
-        return { ok: true, movedToDlq: true };
-      }
+    const wantsRetryThenDlq =
+      failMode === 'retry-then-dlq' || job.name.includes('.retry-dlq');
 
-      if (job.name.includes('.retry-dlq') || failMode === 'retry-then-dlq') {
-        if (currentAttempt < attempts) {
-          throw new Error(
-            `forced failure queue=${this.queueName} attempt=${currentAttempt}/${attempts}`,
-          );
-        }
+    const wantsImmediateDlq =
+      failMode === 'immediate-dlq' ||
+      (job.name.includes('.dlq') && !job.name.includes('.retry-dlq'));
 
-        await this.dlq.moveToDlq(this.queueName, job.name, {
-          originalJobId: String(job.id ?? ''),
-          originalQueue: this.queueName,
-          finalAttempt: currentAttempt,
-          attempts,
-          reason: 'retry-exhausted',
-          data: job.data ?? null,
-        });
-
-        this.logger.warn(
-          `moved sync-jobs job to final DLQ id=${String(job.id ?? '')} name=${job.name} attempt=${currentAttempt}/${attempts}`,
-        );
-
-        return { ok: true, movedToDlq: true };
-      }
-
-      if (failMode === 'always') {
-        throw new Error(`forced failure queue=${this.queueName}`);
-      }
-
-      await this.sink.write(this.queueName, {
-        jobId: String(job.id ?? ''),
-        name: job.name,
-        data: job.data ?? null,
+    if (wantsImmediateDlq) {
+      await this.dlq.moveToDlq(queueName, job.name, {
+        originalJobId: String(job.id ?? ''),
+        originalQueue: queueName,
+        attemptsMade: attempt,
+        maxAttempts,
+        data,
       });
 
-      this.logger.log(
-        `processed sync-jobs job id=${String(job.id ?? '')} name=${job.name}`,
-      );
-
-      return { ok: true };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const msg = `forced immediate DLQ queue=${queueName} attempt=${attempt}/${maxAttempts}`;
       this.logger.warn(
-        `failed sync-jobs job id=${String(job.id ?? '')} name=${job.name} attempt=${currentAttempt}/${attempts}: ${message}`,
+        `moved sync-jobs job to immediate DLQ id=${String(job.id ?? '')} name=${job.name} attempt=${attempt}/${maxAttempts}`,
       );
-      throw error;
+      throw new Error(msg);
     }
+
+    if (wantsRetryThenDlq) {
+      if (attempt >= maxAttempts) {
+        await this.dlq.moveToDlq(queueName, job.name, {
+          originalJobId: String(job.id ?? ''),
+          originalQueue: queueName,
+          attemptsMade: attempt,
+          maxAttempts,
+          data,
+        });
+
+        const msg = `forced terminal failure queue=${queueName} attempt=${attempt}/${maxAttempts}`;
+        this.logger.warn(
+          `moved sync-jobs job to final DLQ id=${String(job.id ?? '')} name=${job.name} attempt=${attempt}/${maxAttempts}`,
+        );
+        throw new Error(msg);
+      }
+
+      const msg = `forced failure queue=${queueName} attempt=${attempt}/${maxAttempts}`;
+      this.logger.warn(
+        `failed sync-jobs job id=${String(job.id ?? '')} name=${job.name} attempt=${attempt}/${maxAttempts}: ${msg}`,
+      );
+      throw new Error(msg);
+    }
+
+    await this.sink.write(queueName, {
+      jobId: String(job.id ?? ''),
+      name: job.name,
+      data,
+    });
+
+    this.logger.log(
+      `processed sync-jobs job id=${String(job.id ?? '')} name=${job.name}`,
+    );
+
+    return { ok: true };
   }
 }
