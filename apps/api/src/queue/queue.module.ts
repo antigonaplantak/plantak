@@ -1,3 +1,4 @@
+import { BackpressureModule } from './backpressure/backpressure.module';
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { QUEUE_NAMES } from './queue.constants';
@@ -12,6 +13,7 @@ const connection = { url: REDIS_URL };
 
 @Module({
   imports: [
+    BackpressureModule,
     BullModule.forRoot({ connection }),
     BullModule.registerQueue(
       { name: QUEUE_NAMES.notifications },

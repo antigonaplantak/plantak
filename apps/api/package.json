@@ -43,7 +43,8 @@
     "outbox:multi-instance:proof": "node scripts/outbox_multi_instance_lease_proof.mjs",
     "runtime:lease:smoke": "node scripts/runtime_lease_smoke.mjs",
     "worker:scheduler": "node dist/scheduler/scheduler.worker.js",
-    "scheduler:proof": "node scripts/scheduler_cron_discipline_proof.mjs"
+    "scheduler:proof": "node scripts/scheduler_cron_discipline_proof.mjs",
+    "backpressure:proof": "node scripts/backpressure_global_proof.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
