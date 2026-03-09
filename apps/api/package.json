@@ -44,7 +44,9 @@
     "runtime:lease:smoke": "node scripts/runtime_lease_smoke.mjs",
     "worker:scheduler": "node dist/scheduler/scheduler.worker.js",
     "scheduler:proof": "node scripts/scheduler_cron_discipline_proof.mjs",
-    "backpressure:proof": "node scripts/backpressure_global_proof.mjs"
+    "backpressure:proof": "node scripts/backpressure_global_proof.mjs",
+    "ops:runtime:snapshot": "node scripts/ops_runtime_snapshot.mjs",
+    "ops:observability:proof": "node scripts/ops_observability_proof.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
