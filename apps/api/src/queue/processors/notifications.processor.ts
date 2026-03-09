@@ -1,11 +1,12 @@
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import type { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../queue.constants';
-import { QueueSinkService } from '../queue-sink.service';
 import { QueueDlqService } from '../queue.dlq.service';
+import { QueueSinkService } from '../queue-sink.service';
 
 @Processor(QUEUE_NAMES.notifications)
+@Injectable()
 export class NotificationsProcessor extends WorkerHost {
   private readonly logger = new Logger(NotificationsProcessor.name);
 
@@ -16,49 +17,61 @@ export class NotificationsProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<Record<string, unknown>, unknown, string>) {
-    const queueName = QUEUE_NAMES.notifications;
-    const maxAttempts = Number(job.opts.attempts ?? 1);
+  async process(job: Job<any, any, string>): Promise<{ ok: true }> {
+    const jobId = String(job.id ?? '');
+    const attempts = Number(job.opts.attempts ?? 1);
     const currentAttempt = Number(job.attemptsMade ?? 0) + 1;
 
-    try {
-      if ((job.data as any)?.forceFail === true) {
-        throw new Error(
-          `forced failure queue=${queueName} attempt=${currentAttempt}/${maxAttempts}`,
-        );
-      }
+    if (job.name === 'smoke.notifications.retry-dlq') {
+      const message = `forced failure queue=${QUEUE_NAMES.notifications} attempt=${currentAttempt}/${attempts}`;
 
-      await this.sink.write(queueName, {
-        jobId: job.id,
-        name: job.name,
-        attemptsMade: currentAttempt,
-        maxAttempts,
-        data: job.data,
-      });
-
-      this.logger.log(
-        `processed notifications job id=${job.id} name=${job.name} attempt=${currentAttempt}/${maxAttempts}`,
-      );
-
-      return { ok: true };
-    } catch (error: any) {
       this.logger.warn(
-        `failed notifications job id=${job.id} name=${job.name} attempt=${currentAttempt}/${maxAttempts}: ${error?.message || error}`,
+        `failed notifications job id=${jobId} name=${job.name} attempt=${currentAttempt}/${attempts}: ${message}`,
       );
 
-      if (currentAttempt >= maxAttempts) {
-        await this.dlq.moveToDlq(queueName, job.name, {
-          originalQueue: queueName,
-          originalJobId: job.id,
-          attemptsMade: currentAttempt,
-          maxAttempts,
+      if (currentAttempt >= attempts) {
+        await this.dlq.moveToDlq(QUEUE_NAMES.notifications, job.name, {
+          originalJobId: jobId,
+          source: 'queue-retry-dlq-proof',
+          queue: QUEUE_NAMES.notifications,
+          name: job.name,
+          finalAttempt: currentAttempt,
+          attempts,
           failedAt: new Date().toISOString(),
-          error: error?.message || String(error),
-          data: job.data,
+          data: job.data ?? null,
         });
       }
 
-      throw error;
+      throw new Error(message);
     }
+
+    if (job.name === 'smoke.notifications.dlq') {
+      await this.dlq.moveToDlq(QUEUE_NAMES.notifications, job.name, {
+        originalJobId: jobId,
+        source: 'queue-dlq-smoke',
+        queue: QUEUE_NAMES.notifications,
+        name: job.name,
+        failedAt: new Date().toISOString(),
+        data: job.data ?? null,
+      });
+
+      const message = `forced DLQ queue=${QUEUE_NAMES.notifications}`;
+      this.logger.warn(
+        `failed notifications job id=${jobId} name=${job.name}: ${message}`,
+      );
+      throw new Error(message);
+    }
+
+    await this.sink.write(QUEUE_NAMES.notifications, {
+      jobId,
+      name: job.name,
+      data: job.data ?? null,
+    });
+
+    this.logger.log(
+      `processed notifications job id=${jobId} name=${job.name}`,
+    );
+
+    return { ok: true };
   }
 }
