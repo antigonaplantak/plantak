@@ -4,6 +4,7 @@ import type { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../queue.constants';
 import { QueueDlqService } from '../queue.dlq.service';
 import { QueueSinkService } from '../queue-sink.service';
+import { QueueIdempotencyService } from '../queue.idempotency.service';
 
 type JobData = Record<string, unknown>;
 
@@ -15,6 +16,7 @@ export class NotificationsProcessor extends WorkerHost {
   constructor(
     private readonly sink: QueueSinkService,
     private readonly dlq: QueueDlqService,
+    private readonly idempotency: QueueIdempotencyService,
   ) {
     super();
   }
@@ -75,11 +77,27 @@ export class NotificationsProcessor extends WorkerHost {
       throw new Error(msg);
     }
 
-    await this.sink.write(queueName, {
-      jobId: String(job.id ?? ''),
-      name: job.name,
-      data,
-    });
+    const idempotencyKey =
+      typeof data.outboxEventId === 'string' ? data.outboxEventId : '';
+
+    const result = await this.idempotency.runOnce(
+      queueName,
+      idempotencyKey,
+      async () => {
+        await this.sink.write(queueName, {
+          jobId: String(job.id ?? ''),
+          name: job.name,
+          data,
+        });
+      },
+    );
+
+    if (result === 'duplicate') {
+      this.logger.warn(
+        `skipped duplicate notifications side-effect id=${String(job.id ?? '')} key=${idempotencyKey}`,
+      );
+      return { ok: true };
+    }
 
     this.logger.log(
       `processed notifications job id=${String(job.id ?? '')} name=${job.name}`,

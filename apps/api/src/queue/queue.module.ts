@@ -5,6 +5,7 @@ import { DLQ_SUFFIX } from './queue.policy';
 import { QueueService } from './queue.service';
 import { QueueDlqService } from './queue.dlq.service';
 import { QueueRetentionService } from './queue.retention.service';
+import { QueueIdempotencyService } from './queue.idempotency.service';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const connection = { url: REDIS_URL };
@@ -21,7 +22,18 @@ const connection = { url: REDIS_URL };
       { name: `${QUEUE_NAMES.syncJobs}${DLQ_SUFFIX}` },
     ),
   ],
-  providers: [QueueService, QueueDlqService, QueueRetentionService],
-  exports: [QueueService, QueueDlqService, QueueRetentionService, BullModule],
+  providers: [
+    QueueService,
+    QueueDlqService,
+    QueueRetentionService,
+    QueueIdempotencyService,
+  ],
+  exports: [
+    QueueService,
+    QueueDlqService,
+    QueueRetentionService,
+    QueueIdempotencyService,
+    BullModule,
+  ],
 })
 export class QueueModule {}
