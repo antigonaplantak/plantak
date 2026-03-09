@@ -2,5 +2,10 @@
   "dependencies": {
     "@sentry/node": "^10.40.0",
     "pino": "^10.3.1"
+  },
+  "packageManager": "pnpm@10.30.2",
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": ">=10 <11"
   }
 }
