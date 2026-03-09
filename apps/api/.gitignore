@@ -3,3 +3,5 @@ node_modules
 .env
 
 /generated/prisma
+_scheduler_runs/
+_queue_runs/

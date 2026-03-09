@@ -41,7 +41,9 @@
     "outbox:crash-recovery:proof": "node scripts/outbox_crash_recovery_proof.mjs",
     "queue:consumer-idempotency:proof": "node scripts/queue_consumer_idempotency_proof.mjs",
     "outbox:multi-instance:proof": "node scripts/outbox_multi_instance_lease_proof.mjs",
-    "runtime:lease:smoke": "node scripts/runtime_lease_smoke.mjs"
+    "runtime:lease:smoke": "node scripts/runtime_lease_smoke.mjs",
+    "worker:scheduler": "node dist/scheduler/scheduler.worker.js",
+    "scheduler:proof": "node scripts/scheduler_cron_discipline_proof.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
@@ -52,6 +54,7 @@
     "@nestjs/mapped-types": "^2.1.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.1",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/adapter-pg": "^7.4.1",
