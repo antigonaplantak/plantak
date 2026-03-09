@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
+import { QUEUE_NAMES, type QueueName } from '../queue/queue.constants';
 
 type DbOutboxRow = {
   id: string;
@@ -15,19 +16,58 @@ type DbOutboxRow = {
 @Injectable()
 export class OutboxDispatcherService {
   private readonly logger = new Logger(OutboxDispatcherService.name);
+  private readonly maxDispatchAttempts = Number(
+    process.env.OUTBOX_DISPATCH_MAX_ATTEMPTS || 10,
+  );
+  private readonly staleLockMs = Number(
+    process.env.OUTBOX_STALE_LOCK_MS || 5 * 60 * 1000,
+  );
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly queues: QueueService,
   ) {}
 
-  private route(eventType: string): 'notifications' | 'webhooks' | 'syncJobs' {
-    if (eventType.startsWith('booking.')) return 'notifications';
-    if (eventType.startsWith('webhook.')) return 'webhooks';
-    return 'syncJobs';
+  private route(eventType: string): QueueName {
+    if (eventType.startsWith('booking.')) return QUEUE_NAMES.notifications;
+    if (eventType.startsWith('webhook.')) return QUEUE_NAMES.webhooks;
+    if (
+      eventType.startsWith('sync.') ||
+      eventType.startsWith('sync-job.') ||
+      eventType.startsWith('integration.')
+    ) {
+      return QUEUE_NAMES.syncJobs;
+    }
+
+    throw new Error(`Unknown outbox eventType: ${eventType}`);
   }
 
-  private async claimBatch(limit: number, workerId: string): Promise<DbOutboxRow[]> {
+  private async reviveStaleLocks(workerId: string) {
+    const threshold = new Date(Date.now() - this.staleLockMs);
+
+    const result = await this.prisma.outboxEvent.updateMany({
+      where: {
+        status: 'PROCESSING',
+        lockedAt: { lt: threshold },
+      },
+      data: {
+        status: 'PENDING',
+        lockedAt: null,
+        lockedBy: null,
+      },
+    });
+
+    if (result.count > 0) {
+      this.logger.warn(
+        `recovered stale outbox locks count=${result.count} workerId=${workerId}`,
+      );
+    }
+  }
+
+  private async claimBatch(
+    limit: number,
+    workerId: string,
+  ): Promise<DbOutboxRow[]> {
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<DbOutboxRow[]>`
         SELECT
@@ -49,6 +89,7 @@ export class OutboxDispatcherService {
       if (!rows.length) return [];
 
       const ids = rows.map((r) => r.id);
+
       await tx.$executeRaw`
         UPDATE "OutboxEvent"
         SET
@@ -61,6 +102,11 @@ export class OutboxDispatcherService {
 
       return rows;
     });
+  }
+
+  private nextAvailableAt(nextAttempt: number) {
+    const delaySec = Math.min(300, Math.max(5, 2 ** Math.min(nextAttempt, 8)));
+    return new Date(Date.now() + delaySec * 1000);
   }
 
   private async markSent(id: string) {
@@ -76,15 +122,33 @@ export class OutboxDispatcherService {
     });
   }
 
-  private async markFailed(id: string, err: unknown) {
+  private async markRetryOrFailed(row: DbOutboxRow, err: unknown) {
     const message =
       err instanceof Error ? err.message.slice(0, 2000) : String(err).slice(0, 2000);
 
+    const nextAttempt = Number(row.attempts ?? 0) + 1;
+
+    if (nextAttempt >= this.maxDispatchAttempts) {
+      await this.prisma.outboxEvent.update({
+        where: { id: row.id },
+        data: {
+          status: 'FAILED',
+          attempts: { increment: 1 },
+          lockedAt: null,
+          lockedBy: null,
+          lastError: message,
+        },
+      });
+
+      return;
+    }
+
     await this.prisma.outboxEvent.update({
-      where: { id },
+      where: { id: row.id },
       data: {
-        status: 'FAILED',
+        status: 'PENDING',
         attempts: { increment: 1 },
+        availableAt: this.nextAvailableAt(nextAttempt),
         lockedAt: null,
         lockedBy: null,
         lastError: message,
@@ -105,14 +169,14 @@ export class OutboxDispatcherService {
       payload: row.payload,
     };
 
-    if (queueName === 'notifications') {
+    if (queueName === QUEUE_NAMES.notifications) {
       await this.queues.addNotification(jobName, payload, {
         jobId: row.id,
       });
       return;
     }
 
-    if (queueName === 'webhooks') {
+    if (queueName === QUEUE_NAMES.webhooks) {
       await this.queues.addWebhook(jobName, payload, {
         jobId: row.id,
       });
@@ -125,6 +189,8 @@ export class OutboxDispatcherService {
   }
 
   async drainOnce(limit = 100, workerId = `dispatcher-${process.pid}`) {
+    await this.reviveStaleLocks(workerId);
+
     const rows = await this.claimBatch(limit, workerId);
 
     if (!rows.length) {
@@ -141,7 +207,7 @@ export class OutboxDispatcherService {
         sent += 1;
       } catch (err) {
         failed += 1;
-        await this.markFailed(row.id, err);
+        await this.markRetryOrFailed(row, err);
         this.logger.error(`dispatch failed id=${row.id} type=${row.eventType}`);
       }
     }

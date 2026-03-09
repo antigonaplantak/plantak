@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
-import { NotificationsModule } from './notifications/notifications.module';
-import { OutboxModule } from './outbox/outbox.module';
 import { StaffInvitesModule } from './staff-invites/staff-invites.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -17,8 +15,7 @@ import { SentryFilter } from './common/sentry/sentry.filter';
 @Module({
   providers: [
     { provide: APP_FILTER, useClass: SentryFilter },
-    { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor },
-  ],
+    { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor }],
   imports: [
     InfraModule,
     QueueModule,
@@ -29,9 +26,6 @@ import { SentryFilter } from './common/sentry/sentry.filter';
     HealthModule,
     ServicesModule,
     AvailabilityModule,
-    BookingsModule,
-    NotificationsModule,
-    OutboxModule,
-  ],
+    BookingsModule],
 })
 export class AppModule {}

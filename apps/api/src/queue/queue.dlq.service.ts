@@ -18,8 +18,14 @@ export class QueueDlqService {
     const originalJobId =
       typeof payload.originalJobId === 'string' ? payload.originalJobId : undefined;
 
+    const safeOriginalJobId = originalJobId
+      ? originalJobId.replace(/[^a-zA-Z0-9_-]/g, '_')
+      : undefined;
+
     await this.queues.addRaw(target, `dlq.${jobName}`, payload, {
-      jobId: originalJobId ? `dlq:${queueName}:${originalJobId}` : undefined,
+      jobId: safeOriginalJobId
+        ? `dlq__${queueName}__${safeOriginalJobId}`
+        : undefined,
       removeOnComplete: 5000,
       removeOnFail: 5000,
     });

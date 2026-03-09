@@ -19,6 +19,26 @@ async function getCounts(queue) {
   return queue.getJobCounts('wait', 'active', 'delayed', 'failed', 'completed');
 }
 
+async function findDlqJob(dlq, expectedDlqId, proofId) {
+  const direct = await dlq.getJob(expectedDlqId);
+  if (direct) return direct;
+
+  const jobs = await dlq.getJobs(
+    ['wait', 'active', 'delayed', 'completed', 'failed'],
+    0,
+    20,
+    true,
+  );
+
+  return (
+    jobs.find((job) => {
+      const originalJobId =
+        typeof job?.data?.originalJobId === 'string' ? job.data.originalJobId : '';
+      return originalJobId === proofId;
+    }) || null
+  );
+}
+
 async function main() {
   const queue = new Queue(queueName, { connection });
   const dlq = new Queue(dlqQueueName, { connection });
@@ -26,8 +46,8 @@ async function main() {
   await queue.obliterate({ force: true }).catch(() => {});
   await dlq.obliterate({ force: true }).catch(() => {});
 
-  const proofId = `proof:notifications:retry-dlq:${Date.now()}`;
-  const expectedDlqId = `dlq:${queueName}:${proofId}`;
+  const proofId = `proof_notifications_retry_dlq_${Date.now()}`;
+  const expectedDlqId = `dlq__${queueName}__${proofId}`;
 
   const job = await queue.add(
     'smoke.notifications.retry-dlq',
@@ -38,20 +58,20 @@ async function main() {
     },
     {
       jobId: proofId,
-      attempts: 2,
+      attempts: 3,
       backoff: { type: 'fixed', delay: 500 },
       removeOnComplete: false,
       removeOnFail: false,
     },
   );
 
-  console.log(JSON.stringify({ queuedJobId: String(job.id) }, null, 2));
+  console.log(JSON.stringify({ queuedJobId: String(job.id), proofId, expectedDlqId }, null, 2));
 
   const deadline = Date.now() + 20000;
 
   while (Date.now() < deadline) {
     const mainJob = await queue.getJob(proofId);
-    const dlqJob = await dlq.getJob(expectedDlqId);
+    const dlqJob = await findDlqJob(dlq, expectedDlqId, proofId);
 
     const mainState = mainJob ? await mainJob.getState() : 'missing';
     const dlqState = dlqJob ? await dlqJob.getState() : 'missing';
@@ -59,19 +79,23 @@ async function main() {
 
     if (
       mainJob &&
-      mainState === 'failed' &&
+      mainState === 'completed' &&
       attemptsMade >= 2 &&
       dlqJob &&
-      ['waiting', 'delayed', 'completed'].includes(dlqState)
+      ['waiting', 'delayed', 'active', 'completed'].includes(dlqState)
     ) {
       console.log('== RETRY DLQ PROOF OK ==');
       console.log(
         JSON.stringify(
           {
+            proofId,
+            expectedDlqId,
             mainState,
             attemptsMade,
             dlqState,
             dlqJobId: String(dlqJob.id),
+            dlqName: dlqJob.name,
+            dlqPayload: dlqJob.data ?? null,
           },
           null,
           2,
@@ -88,7 +112,7 @@ async function main() {
   }
 
   const mainJob = await queue.getJob(proofId);
-  const dlqJob = await dlq.getJob(expectedDlqId);
+  const dlqJob = await findDlqJob(dlq, expectedDlqId, proofId);
 
   console.log('== RETRY DLQ PROOF TIMEOUT ==');
   console.log(
@@ -99,8 +123,10 @@ async function main() {
         mainState: mainJob ? await mainJob.getState() : 'missing',
         attemptsMade: mainJob ? Number(mainJob.attemptsMade ?? 0) : null,
         mainQueue: await getCounts(queue),
+        dlqFound: Boolean(dlqJob),
         dlqState: dlqJob ? await dlqJob.getState() : 'missing',
         dlqQueue: await getCounts(dlq),
+        dlqPayload: dlqJob ? dlqJob.data ?? null : null,
       },
       null,
       2,

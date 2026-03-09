@@ -5,9 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BusinessRolesGuard } from '../common/auth/business-roles.guard';
 import { Reflector } from '@nestjs/core';
 
-import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
-  imports: [NotificationsModule],
+  imports: [],
   controllers: [BookingsController],
   providers: [BookingsService, PrismaService, BusinessRolesGuard, Reflector],
   exports: [BookingsService],
