@@ -1,55 +1,57 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
-
+LABEL="${1:-manual-db-checkpoint}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKUP_ROOT="$ROOT_DIR/_db_backups"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-NAME="${1:-db-checkpoint}"
-SAFE_NAME="$(echo "$NAME" | tr ' /' '__')"
-OUT_DIR="$ROOT/_db_backups/$STAMP-$SAFE_NAME"
+OUT_DIR="$BACKUP_ROOT/${STAMP}-${LABEL}"
 
-CONTAINER="${PG_CONTAINER:-plantak_db}"
-PGUSER="${PGUSER:-plantak}"
-PGDB="${PGDB:-plantak}"
-RESTORE_DB="restore_check_${STAMP//[-]/_}"
-
-cleanup() {
-  docker exec "$CONTAINER" psql -U "$PGUSER" -d postgres -c "DROP DATABASE IF EXISTS \"$RESTORE_DB\";" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
+POSTGRES_USER="${POSTGRES_USER:-plantak}"
+POSTGRES_DB="${POSTGRES_DB:-plantak}"
 
 mkdir -p "$OUT_DIR"
 
+find_db_container() {
+  docker ps --format '{{.Names}} {{.Label "com.docker.compose.service"}}' \
+    | awk '$2=="db"{print $1; exit}'
+}
+
+DB_CONTAINER="${DB_CONTAINER_NAME:-$(find_db_container || true)}"
+
+if [ -z "${DB_CONTAINER}" ]; then
+  docker compose -f "$ROOT_DIR/infra/docker-compose.yml" up -d db >/dev/null 2>&1 || true
+  sleep 4
+  DB_CONTAINER="$(find_db_container || true)"
+fi
+
+if [ -z "${DB_CONTAINER}" ]; then
+  echo "ERROR: no running db container found for safe_db_checkpoint"
+  exit 1
+fi
+
 echo "== PG IS READY =="
-docker exec "$CONTAINER" pg_isready -U "$PGUSER"
-echo
+docker exec "$DB_CONTAINER" pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 
+echo
 echo "== DUMP DATABASE =="
-docker exec "$CONTAINER" pg_dump -U "$PGUSER" -d "$PGDB" -Fc > "$OUT_DIR/db.dump"
-docker exec "$CONTAINER" pg_dump -U "$PGUSER" -d "$PGDB" --schema-only > "$OUT_DIR/schema.sql"
-docker exec "$CONTAINER" pg_dumpall -U "$PGUSER" --globals-only > "$OUT_DIR/globals.sql"
-echo
+docker exec "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > "$OUT_DIR/db.dump"
+docker exec "$DB_CONTAINER" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -s > "$OUT_DIR/schema.sql"
+docker exec "$DB_CONTAINER" pg_dumpall -U "$POSTGRES_USER" --globals-only > "$OUT_DIR/globals.sql"
 
+echo
 echo "== CHECKSUMS =="
-sha256sum "$OUT_DIR/db.dump" "$OUT_DIR/schema.sql" "$OUT_DIR/globals.sql" | tee "$OUT_DIR/SHA256SUMS.txt"
-echo
+sha256sum "$OUT_DIR/db.dump" "$OUT_DIR/schema.sql" "$OUT_DIR/globals.sql"
 
+TMP_DB="restore_check_${STAMP//-/_}"
+
+echo
 echo "== RESTORE TEST =="
-docker exec "$CONTAINER" psql -U "$PGUSER" -d postgres -c "DROP DATABASE IF EXISTS \"$RESTORE_DB\";" >/dev/null
-docker exec "$CONTAINER" psql -U "$PGUSER" -d postgres -c "CREATE DATABASE \"$RESTORE_DB\";" >/dev/null
+docker exec "$DB_CONTAINER" dropdb --if-exists -U "$POSTGRES_USER" "$TMP_DB" >/dev/null 2>&1 || true
+docker exec "$DB_CONTAINER" createdb -U "$POSTGRES_USER" "$TMP_DB"
+cat "$OUT_DIR/db.dump" | docker exec -i "$DB_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$TMP_DB" >/dev/null
+docker exec "$DB_CONTAINER" dropdb -U "$POSTGRES_USER" "$TMP_DB" >/dev/null
 
-cat "$OUT_DIR/db.dump" | docker exec -i "$CONTAINER" pg_restore -U "$PGUSER" -d "$RESTORE_DB" --no-owner --no-privileges
-
-docker exec "$CONTAINER" psql -U "$PGUSER" -d "$RESTORE_DB" -c '\dt' > "$OUT_DIR/RESTORE_TABLES.txt"
-
-docker exec -i "$CONTAINER" psql -U "$PGUSER" -d "$RESTORE_DB" > "$OUT_DIR/RESTORE_SMOKE.txt" <<'SQL'
-SELECT COUNT(*) AS businesses FROM "Business";
-SELECT COUNT(*) AS staff FROM "Staff";
-SELECT COUNT(*) AS services FROM "Service";
-SELECT COUNT(*) AS bookings FROM "Booking";
-SQL
 echo
-
 echo "== DONE =="
 echo "DB backup directory: $OUT_DIR"

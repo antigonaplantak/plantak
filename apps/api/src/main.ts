@@ -1,12 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
-
 import helmet from 'helmet';
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { initSentry } from './common/sentry/sentry.init';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 type ReqWithId = Request & { id?: string };
 
@@ -25,11 +24,10 @@ function requestIdMiddleware(
 
 async function bootstrap() {
   initSentry();
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
 
-  if (process.env.ENABLE_SWAGGER === '1') {
-}
   app.use(requestIdMiddleware);
   app.use(
     helmet({
@@ -38,8 +36,11 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix('api');
+
   const enableSwagger =
-    process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV !== 'production';
+    process.env.ENABLE_SWAGGER === 'true' ||
+    (process.env.ENABLE_SWAGGER !== 'false' &&
+      process.env.NODE_ENV !== 'production');
 
   if (enableSwagger) {
     const config = new DocumentBuilder()
@@ -52,7 +53,6 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, document, { useGlobalPrefix: true });
   }
-
 
   await app.listen(
     process.env.PORT ? Number(process.env.PORT) : 3001,
