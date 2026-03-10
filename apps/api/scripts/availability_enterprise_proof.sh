@@ -312,152 +312,166 @@ slot_count() {
 let s="";
 process.stdin.on("data", d => s += d);
 process.stdin.on("end", () => {
-  const j = JSON.parse(s);
-  const n = ((((j || {}).results || [])[0] || {}).slots || []).length;
-  process.stdout.write(String(n));
-});
-'
+  const j = JSON.parse(s || "{}");
+  const slots = ((((j || {}).results || [])[0] || {}).slots || []);
+  process.stdout.write(String(slots.length));
+});'
 }
 
 slot_present() {
-  SLOT_START="$1" node -e '
+  local wanted="$1"
+  WANT="$wanted" node -e '
 let s="";
-const target = process.env.SLOT_START || "";
 process.stdin.on("data", d => s += d);
 process.stdin.on("end", () => {
-  const j = JSON.parse(s);
+  const wanted = process.env.WANT || "";
+  const j = JSON.parse(s || "{}");
   const slots = ((((j || {}).results || [])[0] || {}).slots || []);
-  const ok = slots.some(x => String(x.start) === target);
-  process.stdout.write(ok ? "1" : "0");
-});
-'
+  process.exit(slots.some(x => x.start === wanted) ? 0 : 1);
+});'
 }
 
-TEMP_VARIANT_NAME="proof-wh-variant-$(date +%s)"
-TEMP_ADDON_A_NAME="proof-wh-addon-a-$(date +%s)"
-TEMP_ADDON_B_NAME="proof-wh-addon-b-$(date +%s)"
+pick_wh_triplet() {
+  node -e '
+let s="";
+process.stdin.on("data", d => s += d);
+process.stdin.on("end", () => {
+  const j = JSON.parse(s || "{}");
+  const slots = ((((j || {}).results || [])[0] || {}).slots || []);
+  for (let i = 1; i < slots.length - 1; i++) {
+    const middle = slots[i];
+    const early = slots.find(x => x.start < middle.start);
+    const late = slots.find(x => x.start >= middle.end);
+    if (early && late) {
+      process.stdout.write([early.start, middle.start, middle.end, late.start].join("|"));
+      return;
+    }
+  }
+});'
+}
 
 echo "== CREATE TEMP VARIANT ON BASE SERVICE =="
 VARIANT_RES="$(curl -fsS -X POST "$API/services/$BASE_SERVICE_ID/variants" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  --data "$(printf '{"name":"%s","durationMin":80,"priceCents":8000,"onlineBookingEnabled":true}' "$TEMP_VARIANT_NAME")")"
-printf '%s
-' "$VARIANT_RES"
+  --data "{\"name\":\"proof-wh-variant-$(date +%s)\",\"durationMin\":80,\"priceCents\":8000,\"onlineBookingEnabled\":true}")"
+printf '%s\n' "$VARIANT_RES"
 VARIANT_ID="$(printf '%s' "$VARIANT_RES" | json_get id)"
-[ -n "$VARIANT_ID" ] || fail "VARIANT_ID_EMPTY"
+[ -n "$VARIANT_ID" ] || fail "WH_VARIANT_ID_MISSING"
 
 echo "== CREATE TEMP ADDON A ON BASE SERVICE =="
 ADDON_A_RES="$(curl -fsS -X POST "$API/services/$BASE_SERVICE_ID/addons" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  --data "$(printf '{"name":"%s","durationMin":15,"priceCents":500,"bufferAfterMin":5,"onlineBookingEnabled":true}' "$TEMP_ADDON_A_NAME")")"
-printf '%s
-' "$ADDON_A_RES"
+  --data "{\"name\":\"proof-wh-addon-a-$(date +%s)\",\"durationMin\":15,\"priceCents\":500,\"bufferAfterMin\":5,\"onlineBookingEnabled\":true}")"
+printf '%s\n' "$ADDON_A_RES"
 ADDON_A_ID="$(printf '%s' "$ADDON_A_RES" | json_get id)"
-[ -n "$ADDON_A_ID" ] || fail "ADDON_A_ID_EMPTY"
+[ -n "$ADDON_A_ID" ] || fail "WH_ADDON_A_ID_MISSING"
 
 echo "== CREATE TEMP ADDON B ON BASE SERVICE =="
 ADDON_B_RES="$(curl -fsS -X POST "$API/services/$BASE_SERVICE_ID/addons" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  --data "$(printf '{"name":"%s","durationMin":10,"priceCents":300,"bufferBeforeMin":5,"onlineBookingEnabled":true}' "$TEMP_ADDON_B_NAME")")"
-printf '%s
-' "$ADDON_B_RES"
+  --data "{\"name\":\"proof-wh-addon-b-$(date +%s)\",\"durationMin\":10,\"priceCents\":300,\"bufferBeforeMin\":5,\"onlineBookingEnabled\":true}")"
+printf '%s\n' "$ADDON_B_RES"
 ADDON_B_ID="$(printf '%s' "$ADDON_B_RES" | json_get id)"
-[ -n "$ADDON_B_ID" ] || fail "ADDON_B_ID_EMPTY"
+[ -n "$ADDON_B_ID" ] || fail "WH_ADDON_B_ID_MISSING"
 
 echo "== FIND CLEAN PROOF DATE =="
 PROOF_DATE=""
 AVAIL_BEFORE=""
-for offset in $(seq 30 220); do
-  CANDIDATE_DATE="$(python3 - "$offset" <<'PY2'
-from datetime import date, timedelta
-import sys
-print((date.today() + timedelta(days=int(sys.argv[1]))).isoformat())
-PY2
-)"
+TRIPLET=""
+TOTAL_MIN_BEFORE=""
+
+for OFFSET in $(seq 0 29); do
+  CANDIDATE_DATE="$(date -u -d "2026-04-01 +${OFFSET} day" +%F)"
   RES="$(curl -fsS "$API/availability?businessId=$BUSINESS_ID&serviceId=$BASE_SERVICE_ID&variantId=$VARIANT_ID&addonIds=$ADDON_A_ID,$ADDON_B_ID&staffId=$STAFF_ID&date=$CANDIDATE_DATE&tz=$TZ_NAME" || true)"
-  [ -n "$RES" ] || continue
-
   COUNT="$(printf '%s' "$RES" | slot_count)"
-  TOTAL="$(printf '%s' "$RES" | json_get totalMin || true)"
+  [ "$COUNT" -gt 0 ] || continue
 
-  if [ "${COUNT:-0}" -ge 7 ] && [ -n "${TOTAL:-}" ] && [ "$TOTAL" != "null" ]; then
-    PROOF_DATE="$CANDIDATE_DATE"
-    AVAIL_BEFORE="$RES"
-    break
-  fi
+  PICKED="$(printf '%s' "$RES" | pick_wh_triplet || true)"
+  [ -n "$PICKED" ] || continue
+
+  TOTAL="$(printf '%s' "$RES" | json_get totalMin)"
+  [ "$TOTAL" = "115" ] || fail "WH_TOTAL_MIN_BEFORE_$TOTAL"
+
+  PROOF_DATE="$CANDIDATE_DATE"
+  AVAIL_BEFORE="$RES"
+  TRIPLET="$PICKED"
+  TOTAL_MIN_BEFORE="$TOTAL"
+  break
 done
 
-[ -n "$PROOF_DATE" ] || fail "PROOF_DATE_NOT_FOUND"
-printf 'PROOF_DATE=%s
-' "$PROOF_DATE"
-printf '%s
-' "$AVAIL_BEFORE"
+[ -n "$PROOF_DATE" ] || fail "WH_PROOF_DATE_NOT_FOUND"
+printf 'PROOF_DATE=%s\n' "$PROOF_DATE"
+printf '%s\n' "$AVAIL_BEFORE"
+printf 'TOTAL_MIN_BEFORE=%s\n' "$TOTAL_MIN_BEFORE"
 
-TOTAL_MIN_BEFORE="$(printf '%s' "$AVAIL_BEFORE" | json_get totalMin)"
-[ -n "$TOTAL_MIN_BEFORE" ] || fail "TOTAL_MIN_BEFORE_EMPTY"
+IFS='|' read -r SLOT_EARLY SLOT_BLOCKED_START SLOT_BLOCKED_END SLOT_LATE <<< "$TRIPLET"
+[ -n "$SLOT_EARLY" ] || fail "WH_SLOT_EARLY_MISSING"
+[ -n "$SLOT_BLOCKED_START" ] || fail "WH_SLOT_BLOCKED_START_MISSING"
+[ -n "$SLOT_BLOCKED_END" ] || fail "WH_SLOT_BLOCKED_END_MISSING"
+[ -n "$SLOT_LATE" ] || fail "WH_SLOT_LATE_MISSING"
 
-SLOT_EARLY="$(printf '%s' "$AVAIL_BEFORE" | json_get results.0.slots.0.start)"
-SLOT_BLOCKED_START="$(printf '%s' "$AVAIL_BEFORE" | json_get results.0.slots.3.start)"
-SLOT_BLOCKED_END="$(printf '%s' "$AVAIL_BEFORE" | json_get results.0.slots.3.end)"
-SLOT_LATE="$(printf '%s' "$AVAIL_BEFORE" | json_get results.0.slots.6.start)"
+printf 'SLOT_EARLY=%s\n' "$SLOT_EARLY"
+printf 'SLOT_BLOCKED_START=%s\n' "$SLOT_BLOCKED_START"
+printf 'SLOT_BLOCKED_END=%s\n' "$SLOT_BLOCKED_END"
+printf 'SLOT_LATE=%s\n' "$SLOT_LATE"
 
-[ -n "$SLOT_EARLY" ] || fail "SLOT_EARLY_EMPTY"
-[ -n "$SLOT_BLOCKED_START" ] || fail "SLOT_BLOCKED_START_EMPTY"
-[ -n "$SLOT_BLOCKED_END" ] || fail "SLOT_BLOCKED_END_EMPTY"
-[ -n "$SLOT_LATE" ] || fail "SLOT_LATE_EMPTY"
+echo "== REFRESH TOKEN + AUTH CONTEXT =="
+curl -fsS -X POST "$API/auth/magic/request" \
+  -H "Content-Type: application/json" \
+  --data "{\"email\":\"$OWNER_EMAIL\"}" >/dev/null || fail "WH_MAGIC_REQUEST_FAILED"
 
-printf 'TOTAL_MIN_BEFORE=%s
-' "$TOTAL_MIN_BEFORE"
-printf 'SLOT_EARLY=%s
-' "$SLOT_EARLY"
-printf 'SLOT_BLOCKED_START=%s
-' "$SLOT_BLOCKED_START"
-printf 'SLOT_BLOCKED_END=%s
-' "$SLOT_BLOCKED_END"
-printf 'SLOT_LATE=%s
-' "$SLOT_LATE"
+CODE="$(tail -n 300 /tmp/plantak_api.log 2>/dev/null | grep '\[MAGIC DEV CODE\]' | grep "$OWNER_EMAIL" | tail -n1 | sed -E 's/.* => ([0-9]{6}).*/\1/')"
+[ -n "$CODE" ] || fail "WH_MAGIC_CODE_NOT_FOUND"
+
+TOKEN="$(curl -fsS -X POST "$API/auth/magic/verify" \
+  -H "Content-Type: application/json" \
+  --data "{\"email\":\"$OWNER_EMAIL\",\"code\":\"$CODE\"}" | json_get accessToken)"
+[ -n "${TOKEN:-}" ] || fail "WH_TOKEN_EMPTY"
+
+echo "TOKEN_OK"
+CTX="$(curl -fsS "$API/auth/context?businessId=$BUSINESS_ID" -H "Authorization: Bearer $TOKEN")"
+printf '%s\n' "$CTX"
+CTX_ROLE="$(printf '%s' "$CTX" | json_get businessRole)"
+CTX_STAFF_ID="$(printf '%s' "$CTX" | json_get staffId)"
+[ "$CTX_ROLE" = "OWNER" ] || fail "WH_AUTH_ROLE_$CTX_ROLE"
+[ "$CTX_STAFF_ID" = "$STAFF_ID" ] || fail "WH_AUTH_STAFF_$CTX_STAFF_ID"
 
 echo "== CREATE TIME OFF TO BLOCK MIDDLE SLOT =="
-TIMEOFF_RES="$(curl -fsS -X POST "$API/staff/$STAFF_ID/time-off" \
+TIMEOFF_HTTP="$(curl -sS -o /tmp/wh_timeoff_create.json -w "%{http_code}" \
+  -X POST "$API/staff/$STAFF_ID/time-off" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  --data "$(printf '{"startAt":"%s","endAt":"%s"}' "$SLOT_BLOCKED_START" "$SLOT_BLOCKED_END")")"
-printf '%s
-' "$TIMEOFF_RES"
-TIMEOFF_ID="$(printf '%s' "$TIMEOFF_RES" | json_get id)"
-[ -n "$TIMEOFF_ID" ] || fail "TIMEOFF_ID_EMPTY"
+  --data "{\"businessId\":\"$BUSINESS_ID\",\"startAt\":\"$SLOT_BLOCKED_START\",\"endAt\":\"$SLOT_BLOCKED_END\",\"reason\":\"enterprise-proof-wh-timeoff\"}")"
+cat /tmp/wh_timeoff_create.json
+printf 'HTTP=%s\n' "$TIMEOFF_HTTP"
+[ "$TIMEOFF_HTTP" = "201" ] || fail "TIMEOFF_CREATE_HTTP_$TIMEOFF_HTTP"
 
-echo "== AVAILABILITY AFTER TIME OFF =="
+TIMEOFF_ID="$(cat /tmp/wh_timeoff_create.json | json_get id)"
+[ -n "$TIMEOFF_ID" ] || fail "WH_TIMEOFF_ID_MISSING"
+
 AVAIL_AFTER="$(curl -fsS "$API/availability?businessId=$BUSINESS_ID&serviceId=$BASE_SERVICE_ID&variantId=$VARIANT_ID&addonIds=$ADDON_A_ID,$ADDON_B_ID&staffId=$STAFF_ID&date=$PROOF_DATE&tz=$TZ_NAME")"
-printf '%s
-' "$AVAIL_AFTER"
-
+printf '%s\n' "$AVAIL_AFTER"
 TOTAL_MIN_AFTER="$(printf '%s' "$AVAIL_AFTER" | json_get totalMin)"
-[ "$TOTAL_MIN_AFTER" = "$TOTAL_MIN_BEFORE" ] || fail "TOTAL_MIN_CHANGED_BEFORE=$TOTAL_MIN_BEFORE AFTER=$TOTAL_MIN_AFTER"
+[ "$TOTAL_MIN_AFTER" = "115" ] || fail "WH_TOTAL_MIN_AFTER_$TOTAL_MIN_AFTER"
 
-EARLY_PRESENT="$(printf '%s' "$AVAIL_AFTER" | slot_present "$SLOT_EARLY")"
-BLOCKED_PRESENT="$(printf '%s' "$AVAIL_AFTER" | slot_present "$SLOT_BLOCKED_START")"
-LATE_PRESENT="$(printf '%s' "$AVAIL_AFTER" | slot_present "$SLOT_LATE")"
+printf '%s' "$AVAIL_AFTER" | slot_present "$SLOT_EARLY" || fail "EARLY_SLOT_MISSING_AFTER_TIMEOFF"
+if printf '%s' "$AVAIL_AFTER" | slot_present "$SLOT_BLOCKED_START"; then
+  fail "BLOCKED_SLOT_STILL_PRESENT"
+fi
+printf '%s' "$AVAIL_AFTER" | slot_present "$SLOT_LATE" || fail "LATE_SLOT_MISSING_AFTER_TIMEOFF"
 
-[ "$EARLY_PRESENT" = "1" ] || fail "EARLY_SLOT_MISSING_AFTER_TIMEOFF"
-[ "$BLOCKED_PRESENT" = "0" ] || fail "BLOCKED_SLOT_STILL_PRESENT"
-[ "$LATE_PRESENT" = "1" ] || fail "LATE_SLOT_MISSING_AFTER_TIMEOFF"
+echo "== DELETE TIME OFF =="
+curl -fsS -X DELETE "$API/staff/$STAFF_ID/time-off/$TIMEOFF_ID?businessId=$BUSINESS_ID" \
+  -H "Authorization: Bearer $TOKEN" >/dev/null || fail "WH_TIMEOFF_DELETE_FAILED"
 
-echo "== CLEANUP TIME OFF =="
-curl -fsS -X DELETE "$API/staff/$STAFF_ID/time-off/$TIMEOFF_ID" \
-  -H "Authorization: Bearer $TOKEN" >/dev/null || fail "TIMEOFF_DELETE_FAILED"
-
-echo "== VERIFY SLOT RETURNS AFTER CLEANUP =="
 AVAIL_CLEAN="$(curl -fsS "$API/availability?businessId=$BUSINESS_ID&serviceId=$BASE_SERVICE_ID&variantId=$VARIANT_ID&addonIds=$ADDON_A_ID,$ADDON_B_ID&staffId=$STAFF_ID&date=$PROOF_DATE&tz=$TZ_NAME")"
-BLOCKED_RETURNED="$(printf '%s' "$AVAIL_CLEAN" | slot_present "$SLOT_BLOCKED_START")"
-[ "$BLOCKED_RETURNED" = "1" ] || fail "BLOCKED_SLOT_DID_NOT_RETURN_AFTER_CLEANUP"
+printf '%s\n' "$AVAIL_CLEAN"
+printf '%s' "$AVAIL_CLEAN" | slot_present "$SLOT_BLOCKED_START" || fail "BLOCKED_SLOT_NOT_RESTORED_AFTER_DELETE"
 
 echo "WORKING_HOURS_TIMEOFF_TOTALMIN_PROOF_OK"
-
-
 section "ADDON_NORMALIZATION_CONSISTENCY_PROOF"
 
 slot_signature() {
