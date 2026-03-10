@@ -150,12 +150,15 @@ list_cache_keys
 
 echo
 echo "== RESCHEDULE =="
-RESCHEDULE_BODY="$(printf '{"businessId":"%s","staffId":"%s","serviceId":"%s","startAt":"%s","tz":"%s"}' \
-  "$BUSINESS_ID" "$STAFF_ID" "$SERVICE_ID" "$NEW_START_AT" "$TZ")"
-curl -sS -w '\nHTTP=%{http_code}\n' -X POST "$API/bookings/$BOOKING_ID/reschedule" \
+RESCHEDULE_BODY="$(printf '{"businessId":"%s","newStartLocal":"%s","tz":"%s"}' \
+  "$BUSINESS_ID" "$NEW_START_LOCAL" "$TZ")"
+RESCHEDULE_RES="$(curl -sS -w '\nHTTP=%{http_code}\n' -X POST "$API/bookings/$BOOKING_ID/reschedule" \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
-  --data "$RESCHEDULE_BODY"
+  --data "$RESCHEDULE_BODY")"
+printf '%s\n' "$RESCHEDULE_RES"
+HTTP="$(printf '%s\n' "$RESCHEDULE_RES" | sed -n '$s/^HTTP=//p')"
+[ "$HTTP" = "201" ] || { echo "RESCHEDULE_FAILED"; exit 1; }
 echo
 echo "== KEYS AFTER RESCHEDULE =="
 assert_no_cache_keys
