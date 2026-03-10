@@ -11,7 +11,7 @@ SERVICE_ID="${SERVICE_ID:-f37eca6e-8729-4a73-a498-028436514c1b}"
 CUSTOMER_ID="${CUSTOMER_ID:-9ae97f7d-56b1-4e0e-a347-c76776bfd090}"
 TZ="${TZ_OVERRIDE:-Europe/Paris}"
 DATE_YMD="${DATE_YMD:-2026-07-07}"
-START_AT='${START_AT:-2026-07-07T10:00:00.000Z}'
+START_AT="${START_AT:-2026-07-07T10:00:00.000Z}"
 NEW_START_AT="${NEW_START_AT:-2026-07-07T12:00:00.000Z}"
 
 json_read() {
@@ -21,31 +21,41 @@ const raw = fs.readFileSync(0, "utf8");
 let data = {};
 try { data = JSON.parse(raw || "{}"); } catch {}
 const pick = (obj, path) => path.split(".").reduce((acc, key) => acc && acc[key], obj);
-const paths = process.argv.slice(1);
-for (const path of paths) {
+for (const path of process.argv.slice(1)) {
   const value = pick(data, path);
   if (value !== undefined && value !== null && value !== "") {
     process.stdout.write(String(value));
     process.exit(0);
   }
 }
-process.exit(0);
 ' "$@"
 }
 
 extract_magic_code() {
   local req="${1:-}"
-  local code=""
-  code="$(printf '%s' "$req" | json_read code devCode debugCode otp data.code data.devCode data.debugCode data.otp)"
+  local code
+  code="$(printf '%s' "$req" | json_read code devCode debugCode otp data.code data.devCode data.debugCode data.otp || true)"
   if [ -z "$code" ] && [ -f /tmp/plantak_api.log ]; then
-    code="$(grep -oE '\[MAGIC DEV CODE] '${OWNER_EMAIL' '=> [0-9]+' /tmp/plantak_api.log | tail -1 | grep -oE '[0-9]+$' || true)"
+    code="$(grep -oE "\\[MAGIC DEV CODE\\] ${OWNER_EMAIL} => [0-9]+" /tmp/plantak_api.log | tail -1 | grep -oE '[0-9]+$' || true)"
   fi
   printf '%s' "$code"
 }
 
 extract_access_token() {
   local body="${1:-}"
-  printf '%s' "$body" | json_read accessToken access_token token jwt tokens.accessToken tokens.access_token data.accessToken data.access_token data.token data.jwt data.tokens.accessToken data.tokens.access_token
+  printf '%s' "$body" | json_read \
+    accessToken \
+    access_token \
+    token \
+    jwt \
+    tokens.accessToken \
+    tokens.access_token \
+    data.accessToken \
+    data.access_token \
+    data.token \
+    data.jwt \
+    data.tokens.accessToken \
+    data.tokens.access_token || true
 }
 
 availability_key_pattern() {
@@ -109,7 +119,7 @@ CREATE_RES="$(curl -sS -w '\nHTTP=%{http_code}\n' -X POST "$API/bookings" \
   --data "$CREATE_BODY")"
 printf '%s' "$CREATE_RES"
 echo
-BOOKING_ID="$(printf '%s' "$CREATE_RES" | sed -n '1p' | json_read id)"
+BOOKING_ID="$(printf '%s' "$CREATE_RES" | sed -n '1p' | json_read id || true)"
 [ -n "$BOOKING_ID" ] || { echo "NO_BOOKING_ID"; exit 1; }
 
 echo
@@ -121,7 +131,6 @@ curl -sS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&staffI
 echo "== KEYS BEFORE CONFIRM =="
 list_cache_keys
 
-echo
 echo
 echo "== CONFIRM =="
 curl -sS -w '\nHTTP=%{http_code}\n' -X POST "$API/bookings/$BOOKING_ID/confirm" \
@@ -138,7 +147,6 @@ curl -sS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&staffI
 echo "== KEYS BEFORE RESCHEDULE =="
 list_cache_keys
 
-echo
 echo
 echo "== RESCHEDULE =="
 RESCHEDULE_BODY="$(printf '{"businessId":"%s","staffId":"%s","serviceId":"%s","startAt":"%s","tz":"%s"}' \
@@ -157,7 +165,6 @@ curl -sS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&staffI
 echo "== KEYS BEFORE CANCEL =="
 list_cache_keys
 
-echo
 echo
 echo "== CANCEL =="
 curl -sS -w '\nHTTP=%{http_code}\n' -X POST "$API/bookings/$BOOKING_ID/cancel" \
