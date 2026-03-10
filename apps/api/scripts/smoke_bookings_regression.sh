@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+
+pick_first_slot_json() {
+  node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);const slots=j?.results?.[0]?.slots ?? [];if(!slots.length) process.exit(2);process.stdout.write(String(slots[0].start));});'
+}
+
+pick_next_slot_json() {
+  CURRENT_START="$1" node -e 'let s="";const current=process.env.CURRENT_START || "";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);const slots=j?.results?.[0]?.slots ?? [];const chosen=[...slots].reverse().find(x=>x.start!==current);if(!chosen) process.exit(2);process.stdout.write(String(chosen.start));});'
+}
+
 set -euo pipefail
 
 cd ~/code/plantak/apps/api || exit 1
@@ -10,9 +19,13 @@ STAFF_ID="${STAFF_ID:-b9b77322-1012-4860-af1b-5b53a6171d06}"
 SERVICE_ID="${SERVICE_ID:-f37eca6e-8729-4a73-a498-028436514c1b}"
 CUSTOMER_ID="${CUSTOMER_ID:-9ae97f7d-56b1-4e0e-a347-c76776bfd090}"
 TZ="${TZ_OVERRIDE:-Europe/Paris}"
-DATE_YMD="${DATE_YMD:-2026-07-07}"
-START_AT="${START_AT:-2026-07-07T10:00:00.000Z}"
-NEW_START_AT="${NEW_START_AT:-2026-07-07T12:00:00.000Z}"
+DATE_YMD="${DATE_YMD:-$(python3 - <<'PY2'
+from datetime import date, timedelta
+print((date.today() + timedelta(days=180)).isoformat())
+PY2
+)}"
+START_AT="${START_AT:-${DATE_YMD}T10:00:00.000Z}"
+NEW_START_AT="${NEW_START_AT:-${DATE_YMD}T12:00:00.000Z}"
 NEW_START_LOCAL="2026-07-07T14:00"
 
 json_read() {
@@ -107,10 +120,17 @@ echo "NEW_START_AT=$NEW_START_AT"
 
 echo
 echo "== PRIME BEFORE CREATE =="
-curl -sS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&staffId=$STAFF_ID&date=$DATE_YMD&tz=$TZ"
-echo
+AVAIL_BEFORE="$(curl -fsS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&staffId=$STAFF_ID&date=$DATE_YMD&tz=Europe/Paris")"
+printf '%s\n' "$AVAIL_BEFORE"
 
-echo
+if [ "${AUTO_PICK_SLOTS:-1}" = "1" ]; then
+  START_AT="$(printf '%s' "$AVAIL_BEFORE" | pick_first_slot_json)" || {
+    echo "AUTO_PICK_CREATE_SLOT_FAIL"
+    exit 1
+  }
+fi
+echo "AUTO_START_AT=$START_AT"
+
 echo "== CREATE =="
 CREATE_BODY="$(printf '{"businessId":"%s","staffId":"%s","serviceId":"%s","customerId":"%s","startAt":"%s","tz":"%s"}' \
   "$BUSINESS_ID" "$STAFF_ID" "$SERVICE_ID" "$CUSTOMER_ID" "$START_AT" "$TZ")"
@@ -144,11 +164,26 @@ assert_no_cache_keys
 
 echo
 echo "== PRIME CACHE BEFORE RESCHEDULE =="
-curl -sS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&staffId=$STAFF_ID&date=$DATE_YMD&tz=$TZ" >/dev/null
-echo "== KEYS BEFORE RESCHEDULE =="
-list_cache_keys
+AVAIL_FOR_RESCHEDULE="$(curl -fsS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&staffId=$STAFF_ID&date=$DATE_YMD&tz=Europe/Paris")"
+printf '%s\n' "$AVAIL_FOR_RESCHEDULE"
 
-echo
+if [ "${AUTO_PICK_SLOTS:-1}" = "1" ]; then
+  NEW_START_AT="$(printf '%s' "$AVAIL_FOR_RESCHEDULE" | pick_next_slot_json "$START_AT")" || {
+    echo "AUTO_PICK_RESCHEDULE_SLOT_FAIL"
+    exit 1
+  }
+fi
+echo "AUTO_NEW_START_AT=$NEW_START_AT"
+NEW_START_LOCAL="$(python3 - "$NEW_START_AT" <<'PY2'
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import sys
+dt = datetime.fromisoformat(sys.argv[1].replace("Z","+00:00")).astimezone(ZoneInfo("Europe/Paris"))
+print(dt.strftime("%Y-%m-%dT%H:%M"))
+PY2
+)"
+echo "AUTO_NEW_START_LOCAL=$NEW_START_LOCAL"
+
 echo "== RESCHEDULE =="
 RESCHEDULE_BODY="$(printf '{"businessId":"%s","newStartLocal":"%s","tz":"%s"}' \
   "$BUSINESS_ID" "$NEW_START_LOCAL" "$TZ")"
