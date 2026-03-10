@@ -212,7 +212,7 @@ CREATE_PRICE="$(printf '%s' "$CREATE_RES" | json_get priceCentsSnapshot)"
 
 assert_eq "$CREATE_VARIANT" "$VARIANT_ID"
 assert_eq "$CREATE_TOTAL" "95"
-assert_eq "$CREATE_END" "2026-07-07T11:35:00.000Z"
+assert_eq "$CREATE_END" "${DATE_YMD}T11:35:00.000Z"
 assert_eq "$CREATE_SERVICE_NAME" "contract-hot-path-$UNIQ"
 assert_eq "$CREATE_PRICE" "7500"
 
@@ -256,7 +256,7 @@ printf '%s\n' "$RESCHEDULE_RES"
 RESCHEDULE_END="$(printf '%s' "$RESCHEDULE_RES" | json_get endAt)"
 RESCHEDULE_TOTAL="$(printf '%s' "$RESCHEDULE_RES" | json_get totalMinSnapshot)"
 assert_eq "$RESCHEDULE_TOTAL" "95"
-assert_eq "$RESCHEDULE_END" "2026-07-07T13:35:00.000Z"
+assert_eq "$RESCHEDULE_END" "${DATE_YMD}T13:35:00.000Z"
 
 echo
 echo "== CLEANUP TEMP SERVICE =="

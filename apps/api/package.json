@@ -48,7 +48,8 @@
     "ops:runtime:snapshot": "node scripts/ops_runtime_snapshot.mjs",
     "ops:observability:proof": "node scripts/ops_observability_proof.mjs",
     "ops:queue:alerts": "node scripts/ops_queue_alerts.mjs",
-    "ops:seed:booking-gate": "node scripts/ops_seed_booking_gate.mjs"
+    "ops:seed:booking-gate": "node scripts/ops_seed_booking_gate.mjs",
+    "proof:availability:enterprise": "bash scripts/availability_enterprise_proof.sh"
   },
   "dependencies": {
     "@bull-board/api": "^6.20.3",
