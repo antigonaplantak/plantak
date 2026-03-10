@@ -197,27 +197,40 @@ model TimeOff {
 model Booking {
   history BookingHistory[]
 
-  id         String        @id @default(uuid())
-  businessId String
-  locationId String?
-  customerId String
-  staffId    String
-  serviceId  String
-  startAt    DateTime
-  endAt      DateTime
-  status     BookingStatus @default(PENDING)
-  notes      String?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id                         String        @id @default(uuid())
+  businessId                 String
+  locationId                 String?
+  customerId                 String
+  staffId                    String
+  serviceId                  String
+  serviceVariantId           String?
+  addonIdsSnapshot           String[]      @default([])
+  serviceNameSnapshot        String?
+  serviceVariantNameSnapshot String?
+  addonsSnapshot             Json?
+  durationMinSnapshot        Int?
+  bufferBeforeMinSnapshot    Int?
+  bufferAfterMinSnapshot     Int?
+  priceCentsSnapshot         Int?
+  currencySnapshot           String?
+  totalMinSnapshot           Int?
+  startAt                    DateTime
+  endAt                      DateTime
+  status                     BookingStatus @default(PENDING)
+  notes                      String?
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
 
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  customer User      @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
-  staff    Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
-  service  Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  location       Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  customer       User            @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  staff          Staff           @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  service        Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  serviceVariant ServiceVariant? @relation(fields: [serviceVariantId], references: [id], onDelete: SetNull)
 
   @@index([businessId, startAt])
   @@index([staffId, startAt, endAt])
+  @@index([serviceVariantId])
 }
 
 model AuditLog {
@@ -397,7 +410,8 @@ model ServiceVariant {
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
-  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service  Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  bookings Booking[]
 
   @@index([serviceId, position])
   @@index([serviceId, archivedAt])

@@ -1,4 +1,6 @@
+import { Transform } from 'class-transformer';
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsOptional,
@@ -8,6 +10,17 @@ import {
   Min,
 } from 'class-validator';
 
+function normalizeAddonIds(value: unknown): string[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+
+  const raw = Array.isArray(value)
+    ? value.flatMap((x) => String(x).split(','))
+    : String(value).split(',');
+
+  const ids = [...new Set(raw.map((x) => x.trim()).filter(Boolean))];
+  return ids.length ? ids : undefined;
+}
+
 export class AvailabilityQueryDto {
   @IsString()
   businessId!: string;
@@ -15,9 +28,19 @@ export class AvailabilityQueryDto {
   @IsString()
   serviceId!: string;
 
+  @IsOptional()
+  @IsString()
+  variantId?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeAddonIds(value))
+  @IsArray()
+  @IsString({ each: true })
+  addonIds?: string[];
+
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date must be YYYY-MM-DD' })
-  date!: string; // interpreted as LOCAL date in tz
+  date!: string;
 
   @IsOptional()
   @IsString()
@@ -29,10 +52,6 @@ export class AvailabilityQueryDto {
   @Max(60)
   intervalMin?: number;
 
-  /**
-   * IANA time zone. Example: Europe/Paris
-   * Minimal validation to avoid crazy input; we also fallback to Europe/Paris in service.
-   */
   @IsOptional()
   @IsString()
   @Matches(/^[A-Za-z_]+\/[A-Za-z_]+$/, {
@@ -40,10 +59,6 @@ export class AvailabilityQueryDto {
   })
   tz?: string;
 
-  /**
-   * Optional: how to return slots (UTC ISO always, UI can render in tz)
-   * If you don’t need it, you can remove.
-   */
   @IsOptional()
   @IsIn(['utc'])
   format?: 'utc';

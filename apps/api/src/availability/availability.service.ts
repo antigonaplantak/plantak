@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DateTime } from 'luxon';
 import { assertIanaTz, localDateRangeToUtc } from '../common/time/time.util';
+import { ServiceProfileService } from '../services/service-profile.service';
 
 type Slot = { start: string; end: string };
 
@@ -27,48 +28,44 @@ function minutesToDateInTzAsUtc(
 
 @Injectable()
 export class AvailabilityService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly serviceProfiles: ServiceProfileService,
+  ) {}
 
   async getAvailability(params: {
     businessId: string;
     serviceId: string;
-    date: string; // YYYY-MM-DD (local date in tz)
+    variantId?: string;
+    addonIds?: string[];
+    date: string;
     staffId?: string;
     intervalMin?: number;
-    tz?: string; // IANA
+    tz?: string;
   }): Promise<{
-    totalMin: number;
+    totalMin: number | null;
     intervalMin: number;
-    results: Array<{ staffId: string; slots: Slot[] }>;
+    results: Array<{ staffId: string; totalMin: number; slots: Slot[] }>;
   }> {
     const intervalMin = params.intervalMin ?? 15;
     const tz = params.tz ?? 'Europe/Paris';
-
-    const service = await this.prisma.service.findFirst({
-      where: {
-        id: params.serviceId,
-        businessId: params.businessId,
-        active: true,
-      },
-      select: {
-        id: true,
-        durationMin: true,
-        bufferBeforeMin: true,
-        bufferAfterMin: true,
-      },
-    });
-
-    if (!service) throw new NotFoundException('Service not found');
-
-    const totalMin =
-      service.durationMin + service.bufferBeforeMin + service.bufferAfterMin;
+    const normalizedAddonIds = (params.addonIds ?? [])
+      .flatMap((v) => String(v).split(','))
+      .map((v) => v.trim())
+      .filter(Boolean);
 
     const staff = await this.prisma.staff.findMany({
       where: {
         businessId: params.businessId,
         active: true,
         ...(params.staffId ? { id: params.staffId } : {}),
-        serviceLinks: { some: { serviceId: params.serviceId } },
+        serviceLinks: {
+          some: {
+            serviceId: params.serviceId,
+            isActive: true,
+            onlineBookingEnabled: true,
+          },
+        },
       },
       select: { id: true },
     });
@@ -78,16 +75,27 @@ export class AvailabilityService {
       tz,
     );
 
-    const results: Array<{ staffId: string; slots: Slot[] }> = [];
+    const results: Array<{ staffId: string; totalMin: number; slots: Slot[] }> = [];
 
     for (const s of staff) {
+      const profile = await this.serviceProfiles.resolveForSelection({
+        businessId: params.businessId,
+        serviceId: params.serviceId,
+        staffId: s.id,
+        variantId: params.variantId,
+        addonIds: normalizedAddonIds,
+        requireOnlineBookingEnabled: true,
+      });
+
+      const totalMin = profile.totalMin;
+
       const working = await this.prisma.workingHour.findMany({
         where: { staffId: s.id, dayOfWeek },
         select: { startMin: true, endMin: true },
       });
 
       if (!working.length) {
-        results.push({ staffId: s.id, slots: [] });
+        results.push({ staffId: s.id, totalMin, slots: [] });
         continue;
       }
 
@@ -121,14 +129,17 @@ export class AvailabilityService {
             bookings.some((b) =>
               overlaps(slotStartUtc, slotEndUtc, b.startAt, b.endAt),
             )
-          )
+          ) {
             continue;
+          }
+
           if (
             timeOff.some((t) =>
               overlaps(slotStartUtc, slotEndUtc, t.startAt, t.endAt),
             )
-          )
+          ) {
             continue;
+          }
 
           slots.push({
             start: slotStartUtc.toISOString(),
@@ -137,9 +148,13 @@ export class AvailabilityService {
         }
       }
 
-      results.push({ staffId: s.id, slots });
+      results.push({ staffId: s.id, totalMin, slots });
     }
 
-    return { totalMin, intervalMin, results };
+    return {
+      totalMin: results[0]?.totalMin ?? null,
+      intervalMin,
+      results,
+    };
   }
 }

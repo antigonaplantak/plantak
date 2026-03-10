@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { DateTime } from 'luxon';
 import { RedisCacheService } from '../infra/redis-cache.service';
+import { ServiceProfileService } from '../services/service-profile.service';
 import { AppRole } from '../common/auth/roles.decorator';
 import { Prisma } from '@prisma/client';
 import { parseStartToUtc } from '../common/time/time.util';
@@ -41,7 +42,11 @@ function isOverlapError(e: unknown): boolean {
 
 @Injectable()
 export class BookingsService {
-  constructor(private prisma: PrismaService, private readonly cache: RedisCacheService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly cache: RedisCacheService,
+    private readonly serviceProfiles: ServiceProfileService,
+  ) {}
 
   private async invalidateAvailabilityCacheForBooking(
     booking: {
@@ -120,13 +125,42 @@ export class BookingsService {
     });
   }
 
+  private normalizeAddonIds(addonIds?: string[]) {
+    return [...new Set((addonIds ?? []).map((x) => String(x).trim()).filter(Boolean))];
+  }
+
+  private async resolveLegacyTotalMin(
+    tx: Prisma.TransactionClient,
+    booking: { serviceId: string; businessId: string },
+  ) {
+    const service = await tx.service.findFirst({
+      where: {
+        id: booking.serviceId,
+        businessId: booking.businessId,
+        active: true,
+      },
+      select: {
+        durationMin: true,
+        bufferBeforeMin: true,
+        bufferAfterMin: true,
+      },
+    });
+
+    if (!service) throw new BadRequestException('Service not found');
+
+    return (
+      service.durationMin + service.bufferBeforeMin + service.bufferAfterMin
+    );
+  }
+
   async create(input: {
     businessId: string;
     customerId: string;
     staffId: string;
     serviceId: string;
+    variantId?: string;
+    addonIds?: string[];
 
-    // timezone contract (either startAt OR startLocal+tz)
     startAt?: string;
     startLocal?: string;
     tz?: string;
@@ -138,6 +172,8 @@ export class BookingsService {
     actorRole: ActorRole;
     idempotencyKey?: string;
   }) {
+    const normalizedAddonIds = this.normalizeAddonIds(input.addonIds);
+
     const start = parseStartToUtc({
       startAt: input.startAt,
       startLocal: input.startLocal,
@@ -149,6 +185,8 @@ export class BookingsService {
       customerId: input.customerId,
       staffId: input.staffId,
       serviceId: input.serviceId,
+      variantId: input.variantId ?? null,
+      addonIds: normalizedAddonIds,
       startAtUtc: start.toISOString(),
       notes: input.notes ?? null,
       locationId: input.locationId ?? null,
@@ -161,7 +199,7 @@ export class BookingsService {
         input.idempotencyKey,
       );
       if (existing) {
-        if (existing.requestHash !== requestHash) {
+        if (existing.requestHash != requestHash) {
           throw new ConflictException(
             'Idempotency key reused with different request',
           );
@@ -170,24 +208,16 @@ export class BookingsService {
       }
     }
 
-    const service = await this.prisma.service.findFirst({
-      where: {
-        id: input.serviceId,
-        businessId: input.businessId,
-        active: true,
-      },
-      select: {
-        id: true,
-        durationMin: true,
-        bufferBeforeMin: true,
-        bufferAfterMin: true,
-      },
+    const profile = await this.serviceProfiles.resolveForSelection({
+      businessId: input.businessId,
+      serviceId: input.serviceId,
+      staffId: input.staffId,
+      variantId: input.variantId,
+      addonIds: normalizedAddonIds,
+      requireOnlineBookingEnabled: true,
     });
-    if (!service) throw new BadRequestException('Service not found');
 
-    const totalMin =
-      service.durationMin + service.bufferBeforeMin + service.bufferAfterMin;
-    const end = new Date(start.getTime() + totalMin * 60_000);
+    const end = new Date(start.getTime() + profile.totalMin * 60_000);
 
     try {
       const created = await this.prisma.booking.create({
@@ -196,6 +226,17 @@ export class BookingsService {
           customerId: input.customerId,
           staffId: input.staffId,
           serviceId: input.serviceId,
+          serviceVariantId: profile.serviceVariantId,
+          addonIdsSnapshot: profile.addonIds,
+          serviceNameSnapshot: profile.serviceName,
+          serviceVariantNameSnapshot: profile.serviceVariantName,
+          addonsSnapshot: profile.addons as Prisma.InputJsonValue,
+          durationMinSnapshot: profile.durationMin,
+          bufferBeforeMinSnapshot: profile.bufferBeforeMin,
+          bufferAfterMinSnapshot: profile.bufferAfterMin,
+          priceCentsSnapshot: profile.priceCents,
+          currencySnapshot: profile.currency,
+          totalMinSnapshot: profile.totalMin,
           locationId: input.locationId ?? null,
           startAt: start,
           endAt: end,
@@ -207,6 +248,17 @@ export class BookingsService {
           businessId: true,
           staffId: true,
           serviceId: true,
+          serviceVariantId: true,
+          addonIdsSnapshot: true,
+          serviceNameSnapshot: true,
+          serviceVariantNameSnapshot: true,
+          addonsSnapshot: true,
+          durationMinSnapshot: true,
+          bufferBeforeMinSnapshot: true,
+          bufferAfterMinSnapshot: true,
+          priceCentsSnapshot: true,
+          currencySnapshot: true,
+          totalMinSnapshot: true,
           customerId: true,
           locationId: true,
           startAt: true,
@@ -239,7 +291,6 @@ export class BookingsService {
     actorRole: ActorRole;
     bookingId: string;
 
-    // timezone contract (either newStartAt OR newStartLocal+tz)
     newStartAt?: string;
     newStartLocal?: string;
     tz?: string;
@@ -288,6 +339,7 @@ export class BookingsService {
           staffId: true,
           customerId: true,
           status: true,
+          totalMinSnapshot: true,
         },
       });
 
@@ -300,22 +352,13 @@ export class BookingsService {
         throw new ForbiddenException('Not allowed to reschedule this booking');
       }
 
-      const service = await tx.service.findFirst({
-        where: {
-          id: booking.serviceId,
-          businessId: booking.businessId,
-          active: true,
-        },
-        select: {
-          durationMin: true,
-          bufferBeforeMin: true,
-          bufferAfterMin: true,
-        },
-      });
-      if (!service) throw new BadRequestException('Service not found');
-
       const totalMin =
-        service.durationMin + service.bufferBeforeMin + service.bufferAfterMin;
+        booking.totalMinSnapshot ??
+        (await this.resolveLegacyTotalMin(tx, {
+          serviceId: booking.serviceId,
+          businessId: booking.businessId,
+        }));
+
       const end = new Date(start.getTime() + totalMin * 60_000);
 
       try {
@@ -327,6 +370,17 @@ export class BookingsService {
             businessId: true,
             staffId: true,
             serviceId: true,
+            serviceVariantId: true,
+            addonIdsSnapshot: true,
+            serviceNameSnapshot: true,
+            serviceVariantNameSnapshot: true,
+            addonsSnapshot: true,
+            durationMinSnapshot: true,
+            bufferBeforeMinSnapshot: true,
+            bufferAfterMinSnapshot: true,
+            priceCentsSnapshot: true,
+            currencySnapshot: true,
+            totalMinSnapshot: true,
             customerId: true,
             locationId: true,
             startAt: true,
@@ -351,7 +405,7 @@ export class BookingsService {
         }
 
         await this.invalidateAvailabilityCacheForBooking(updated, 'Europe/Paris');
-      return updated;
+        return updated;
       } catch (e) {
         if (isOverlapError(e))
           throw new ConflictException('Slot not available');

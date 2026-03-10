@@ -1,4 +1,4 @@
-import { IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsISO8601, IsOptional, IsString } from 'class-validator';
 
 export class CreateBookingDto {
   @IsString()
@@ -10,19 +10,26 @@ export class CreateBookingDto {
   @IsString()
   serviceId!: string;
 
-  // Variant B (absolute ISO with timezone, e.g. ...Z)
+  @IsOptional()
+  @IsString()
+  variantId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  addonIds?: string[];
+
   @IsOptional()
   @IsISO8601()
   startAt?: string;
 
-  // Variant A (local ISO without timezone)
   @IsOptional()
   @IsString()
-  startLocal?: string; // "YYYY-MM-DDTHH:mm"
+  startLocal?: string;
 
   @IsOptional()
   @IsString()
-  tz?: string; // IANA, e.g. "Europe/Paris"
+  tz?: string;
 
   @IsOptional()
   @IsString()

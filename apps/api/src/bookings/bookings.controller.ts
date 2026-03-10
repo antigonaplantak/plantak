@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BookingsService } from './bookings.service';
@@ -36,6 +36,8 @@ export class BookingsController {
       customerId: actorUserId,
       staffId: dto.staffId,
       serviceId: dto.serviceId,
+      variantId: dto.variantId,
+      addonIds: dto.addonIds,
       startAt: dto.startAt,
       startLocal: dto.startLocal,
       tz: dto.tz,
@@ -46,7 +48,8 @@ export class BookingsController {
       idempotencyKey: dto.idempotencyKey,
     });
   }
-@Post('reschedule')
+
+  @Post('reschedule')
   rescheduleLegacy(
     @Body() dto: RescheduleBookingDto,
     @Req() req: any,
@@ -59,7 +62,7 @@ export class BookingsController {
     });
   }
 
-@Post(':id/reschedule')
+  @Post(':id/reschedule')
   rescheduleById(
     @Param('id') id: string,
     @Body() dto: RescheduleBookingByIdDto,
@@ -72,8 +75,6 @@ export class BookingsController {
       actorRole: (req?.user?.role ?? 'CUSTOMER') as any,
     });
   }
-
-
 
   @Get()
   @ApiQuery({ name: 'businessId', required: true, type: String })

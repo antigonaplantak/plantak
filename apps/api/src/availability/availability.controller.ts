@@ -1,6 +1,6 @@
-import { RedisCacheService } from "../infra/redis-cache.service";
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
+import { RedisCacheService } from "../infra/redis-cache.service";
 import { AvailabilityService } from './availability.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 
@@ -15,6 +15,8 @@ export class AvailabilityController {
   @Get()
   @ApiQuery({ name: 'businessId', required: true, type: String })
   @ApiQuery({ name: 'serviceId', required: true, type: String })
+  @ApiQuery({ name: 'variantId', required: false, type: String })
+  @ApiQuery({ name: 'addonIds', required: false, type: String, example: 'id1,id2' })
   @ApiQuery({
     name: 'date',
     required: true,
@@ -30,10 +32,14 @@ export class AvailabilityController {
     example: 'Europe/Paris',
   })
   async getAvailability(@Query() q: AvailabilityQueryDto) {
+    const addonIdsKey = (q.addonIds ?? []).slice().sort().join(',');
+
     const cacheKey = this.cache.key(
       "availability",
       `businessId=${q.businessId}`,
       `serviceId=${q.serviceId}`,
+      `variantId=${q.variantId ?? ""}`,
+      `addonIds=${addonIdsKey}`,
       `date=${q.date}`,
       `staffId=${q.staffId ?? ""}`,
       `intervalMin=${q.intervalMin ?? ""}`,
@@ -46,6 +52,8 @@ export class AvailabilityController {
     const result = await this.availabilityService.getAvailability({
       businessId: q.businessId,
       serviceId: q.serviceId,
+      variantId: q.variantId,
+      addonIds: q.addonIds,
       date: q.date,
       staffId: q.staffId,
       intervalMin: q.intervalMin,

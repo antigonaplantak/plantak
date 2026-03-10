@@ -8,6 +8,7 @@ import { ServicesHttpController } from "./services.http.controller";
 import { ServiceVariantsController } from "./service-variants.controller";
 import { ServiceAddonsController } from "./service-addons.controller";
 import { ServiceCategoriesController } from "../service-categories/service-categories.controller";
+import { ServiceProfileService } from "./service-profile.service";
 
 @Module({
   imports: [PrismaModule, RedisCacheModule],
@@ -17,7 +18,17 @@ import { ServiceCategoriesController } from "../service-categories/service-categ
     ServiceVariantsController,
     ServiceAddonsController,
   ],
-  providers: [ServicesService, ServiceVariantsService, ServiceAddonsService],
-  exports: [ServicesService, ServiceVariantsService, ServiceAddonsService],
+  providers: [
+    ServicesService,
+    ServiceVariantsService,
+    ServiceAddonsService,
+    ServiceProfileService,
+  ],
+  exports: [
+    ServicesService,
+    ServiceVariantsService,
+    ServiceAddonsService,
+    ServiceProfileService,
+  ],
 })
 export class ServicesModule {}
