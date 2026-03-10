@@ -15,6 +15,7 @@ import { SentryFilter } from './common/sentry/sentry.filter';
 import { QueueDashboardModule } from './ops/queue-dashboard.module';
 import { StaffModule } from './staff/staff.module';
 import { WorkingHoursModule } from './working-hours/working-hours.module';
+import { TimeOffModule } from './time-off/time-off.module';
 
 @Module({
   providers: [
@@ -28,6 +29,7 @@ import { WorkingHoursModule } from './working-hours/working-hours.module';
     StaffInvitesModule,
     StaffModule,
     WorkingHoursModule,
+    TimeOffModule,
     PrismaModule,
     AuthModule,
     HealthModule,
