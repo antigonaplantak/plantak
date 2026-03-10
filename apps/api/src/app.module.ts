@@ -13,6 +13,7 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
 import { SentryFilter } from './common/sentry/sentry.filter';
 
 import { QueueDashboardModule } from './ops/queue-dashboard.module';
+import { StaffModule } from './staff/staff.module';
 
 @Module({
   providers: [
@@ -24,6 +25,7 @@ import { QueueDashboardModule } from './ops/queue-dashboard.module';
     QueueModule,
 
     StaffInvitesModule,
+    StaffModule,
     PrismaModule,
     AuthModule,
     HealthModule,
