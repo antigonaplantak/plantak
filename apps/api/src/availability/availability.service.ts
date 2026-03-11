@@ -21,9 +21,24 @@ function minutesToDateInTzAsUtc(
   tz: string,
 ): Date {
   const zone = assertIanaTz(tz);
-  const local = DateTime.fromISO(dateYmd, { zone })
-    .startOf('day')
-    .plus({ minutes });
+  const base = DateTime.fromISO(dateYmd, { zone });
+
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+
+  const local = DateTime.fromObject(
+    {
+      year: base.year,
+      month: base.month,
+      day: base.day,
+      hour,
+      minute,
+      second: 0,
+      millisecond: 0,
+    },
+    { zone },
+  );
+
   return local.toUTC().toJSDate();
 }
 
@@ -50,10 +65,7 @@ export class AvailabilityService {
   }> {
     const intervalMin = params.intervalMin ?? 15;
     const tz = params.tz ?? 'UTC';
-    const normalizedAddonIds = (params.addonIds ?? [])
-      .flatMap((v) => String(v).split(','))
-      .map((v) => v.trim())
-      .filter(Boolean);
+    const normalizedAddonIds = normalizeAddonIds(params.addonIds);
 
     const staff = await this.prisma.staff.findMany({
       where: {
@@ -120,11 +132,32 @@ export class AvailabilityService {
       });
 
       const slots: Slot[] = [];
+      const seenStarts = new Set<string>();
 
       for (const w of working) {
-        for (let m = w.startMin; m + totalMin <= w.endMin; m += intervalMin) {
-          const slotStartUtc = minutesToDateInTzAsUtc(params.date, m, tz);
+        const windowStartUtc = minutesToDateInTzAsUtc(
+          params.date,
+          w.startMin,
+          tz,
+        );
+        const windowEndUtc = minutesToDateInTzAsUtc(
+          params.date,
+          w.endMin,
+          tz,
+        );
+
+        for (
+          let cur = new Date(windowStartUtc.getTime());
+          addMinutes(cur, totalMin) <= windowEndUtc;
+          cur = addMinutes(cur, intervalMin)
+        ) {
+          const slotStartUtc = new Date(cur.getTime());
           const slotEndUtc = addMinutes(slotStartUtc, totalMin);
+          const slotKey = slotStartUtc.toISOString();
+
+          if (seenStarts.has(slotKey)) {
+            continue;
+          }
 
           if (
             bookings.some((b) =>
@@ -142,6 +175,7 @@ export class AvailabilityService {
             continue;
           }
 
+          seenStarts.add(slotKey);
           slots.push({
             start: slotStartUtc.toISOString(),
             end: slotEndUtc.toISOString(),
