@@ -1,8 +1,17 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsDefined,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { WorkingHourItemDto } from './working-hour-item.dto';
 
 export class ReplaceWorkingHoursDto {
+  @IsDefined()
   @IsString()
   businessId!: string;
 
@@ -10,6 +19,7 @@ export class ReplaceWorkingHoursDto {
   @IsString()
   tz?: string;
 
+  @IsDefined()
   @IsArray()
   @ArrayMinSize(0)
   @ArrayMaxSize(50)
