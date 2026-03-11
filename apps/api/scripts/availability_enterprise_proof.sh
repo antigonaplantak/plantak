@@ -239,10 +239,8 @@ cancel_booking() {
 TOKEN="$(auth_token)"
 echo "TOKEN_OK"
 
-section "DST_JUMP_FORWARD_PROOF"
 bash scripts/proofs/availability/dst_jump_forward.sh
 
-section "DST_FALLBACK_PROOF"
 bash scripts/proofs/availability/dst_fallback.sh
 
 section "SLOT_BOUNDARY_PROOF"
@@ -328,10 +326,8 @@ cancel_booking "$TZ_ID"
 
 echo "TIMEZONE_CONVERSION_PROOF_OK"
 
-section "WORKING_HOURS_TIMEOFF_TOTALMIN_PROOF"
 bash scripts/proofs/availability/working_hours_timeoff_totalmin.sh
 
-section "ADDON_NORMALIZATION_CONSISTENCY_PROOF"
 bash scripts/proofs/availability/addon_normalization_consistency.sh
 
 echo "AVAILABILITY_ENTERPRISE_PROOF_OK"
