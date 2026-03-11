@@ -1,4 +1,5 @@
 import { Transform } from 'class-transformer';
+import { normalizeAddonIds } from '../addon-ids.util';
 import {
   IsArray,
   IsIn,
@@ -10,16 +11,6 @@ import {
   Min,
 } from 'class-validator';
 
-function normalizeAddonIds(value: unknown): string[] | undefined {
-  if (value === undefined || value === null || value === '') return undefined;
-
-  const raw = Array.isArray(value)
-    ? value.flatMap((x) => String(x).split(','))
-    : String(value).split(',');
-
-  const ids = [...new Set(raw.map((x) => x.trim()).filter(Boolean))];
-  return ids.length ? ids : undefined;
-}
 
 export class AvailabilityQueryDto {
   @IsString()
@@ -33,7 +24,7 @@ export class AvailabilityQueryDto {
   variantId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => normalizeAddonIds(value))
+  @Transform(({ value }) => { const ids = normalizeAddonIds(value); return ids.length ? ids : undefined; })
   @IsArray()
   @IsString({ each: true })
   addonIds?: string[];
@@ -55,11 +46,7 @@ export class AvailabilityQueryDto {
   @IsOptional()
   @IsString()
   @Matches(/^[A-Za-z_]+\/[A-Za-z_]+$/, {
-    message: 'tz must be IANA format like Europe/Paris',
+    message: 'tz must be a valid IANA timezone like UTC or America/New_York',
   })
   tz?: string;
-
-  @IsOptional()
-  @IsIn(['utc'])
-  format?: 'utc';
 }

@@ -11,7 +11,7 @@ export function assertIanaTz(tz: string): string {
 export function parseStartToUtc(input: {
   startAt?: string; // ISO with timezone (Z or +02:00)
   startLocal?: string; // "YYYY-MM-DDTHH:mm"
-  tz?: string; // IANA, e.g. "Europe/Paris"
+  tz?: string; // IANA, e.g. "UTC"
 }): Date {
   if (input.startAt) {
     const d = new Date(input.startAt);

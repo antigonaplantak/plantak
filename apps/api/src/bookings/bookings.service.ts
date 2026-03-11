@@ -11,6 +11,7 @@ import { ServiceProfileService } from '../services/service-profile.service';
 import { AppRole } from '../common/auth/roles.decorator';
 import { Prisma } from '@prisma/client';
 import { parseStartToUtc } from '../common/time/time.util';
+import { normalizeAddonIds } from '../availability/addon-ids.util';
 type ActorRole = AppRole;
 
 function isBusinessOperator(role: ActorRole) {
@@ -55,7 +56,7 @@ export class BookingsService {
       staffId?: string;
       startAt?: Date | string | null;
     },
-    tz = 'Europe/Paris',
+    tz = 'UTC',
   ) {
     try {
       if (booking?.businessId && booking?.serviceId && booking?.staffId && booking?.startAt) {
@@ -125,10 +126,6 @@ export class BookingsService {
     });
   }
 
-  private normalizeAddonIds(addonIds?: string[]) {
-    return [...new Set((addonIds ?? []).map((x) => String(x).trim()).filter(Boolean))];
-  }
-
   private async resolveLegacyTotalMin(
     tx: Prisma.TransactionClient,
     booking: { serviceId: string; businessId: string },
@@ -172,7 +169,7 @@ export class BookingsService {
     actorRole: ActorRole;
     idempotencyKey?: string;
   }) {
-    const normalizedAddonIds = this.normalizeAddonIds(input.addonIds);
+    const normalizedAddonIds = normalizeAddonIds(input.addonIds);
 
     const start = parseStartToUtc({
       startAt: input.startAt,
@@ -277,7 +274,7 @@ export class BookingsService {
         });
       }
 
-      await this.invalidateAvailabilityCacheForBooking(created, 'Europe/Paris');
+      await this.invalidateAvailabilityCacheForBooking(created);
       return created;
     } catch (e) {
       if (isOverlapError(e)) throw new ConflictException('Slot not available');
@@ -404,7 +401,7 @@ export class BookingsService {
             .catch(() => undefined);
         }
 
-        await this.invalidateAvailabilityCacheForBooking(updated, 'Europe/Paris');
+        await this.invalidateAvailabilityCacheForBooking(updated);
         return updated;
       } catch (e) {
         if (isOverlapError(e))
@@ -680,7 +677,7 @@ export class BookingsService {
       actorUserId,
       from,
       to,
-      tz = 'Europe/Paris',
+      tz = 'UTC',
       staffId,
       locationId,
       status,

@@ -16,7 +16,7 @@ export class RescheduleBookingByIdDto {
 
   @IsOptional()
   @IsString()
-  tz?: string; // IANA, e.g. "Europe/Paris"
+  tz?: string; // IANA, e.g. "UTC"
 
   @IsOptional()
   @IsString()

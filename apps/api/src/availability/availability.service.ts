@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DateTime } from 'luxon';
 import { assertIanaTz, localDateRangeToUtc } from '../common/time/time.util';
 import { ServiceProfileService } from '../services/service-profile.service';
+import { normalizeAddonIds } from './addon-ids.util';
 
 type Slot = { start: string; end: string };
 
@@ -48,7 +49,7 @@ export class AvailabilityService {
     results: Array<{ staffId: string; totalMin: number; slots: Slot[] }>;
   }> {
     const intervalMin = params.intervalMin ?? 15;
-    const tz = params.tz ?? 'Europe/Paris';
+    const tz = params.tz ?? 'UTC';
     const normalizedAddonIds = (params.addonIds ?? [])
       .flatMap((v) => String(v).split(','))
       .map((v) => v.trim())

@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeAddonIds } from '../availability/addon-ids.util';
 
 type ResolvedAddon = {
   id: string;
@@ -18,10 +19,6 @@ type ResolvedAddon = {
 export class ServiceProfileService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private normalizeIds(ids?: string[]) {
-    return [...new Set((ids ?? []).map((x) => String(x).trim()).filter(Boolean))];
-  }
-
   async resolveForSelection(input: {
     businessId: string;
     serviceId: string;
@@ -30,7 +27,7 @@ export class ServiceProfileService {
     addonIds?: string[];
     requireOnlineBookingEnabled?: boolean;
   }) {
-    const addonIds = this.normalizeIds(input.addonIds);
+    const addonIds = normalizeAddonIds(input.addonIds);
     const requireOnline = input.requireOnlineBookingEnabled !== false;
 
     const service = await this.prisma.service.findFirst({
