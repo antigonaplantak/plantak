@@ -338,9 +338,9 @@ process.stdin.on("data", d => s += d);
 process.stdin.on("end", () => {
   const j = JSON.parse(s || "{}");
   const slots = ((((j || {}).results || [])[0] || {}).slots || []);
-  for (let i = 1; i < slots.length - 1; i++) {
+  for (let i = 0; i < slots.length; i++) {
     const middle = slots[i];
-    const early = slots.find(x => x.start < middle.start);
+    const early = slots.find(x => x.end <= middle.start);
     const late = slots.find(x => x.start >= middle.end);
     if (early && late) {
       process.stdout.write([early.start, middle.start, middle.end, late.start].join("|"));
