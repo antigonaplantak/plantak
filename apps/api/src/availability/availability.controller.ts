@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RedisCacheService } from '../infra/redis-cache.service';
 import { AvailabilityService } from './availability.service';
@@ -43,6 +43,13 @@ export class AvailabilityController {
     type: String,
     example: 'UTC',
   })
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
   async getAvailability(@Query() q: AvailabilityQueryDto) {
     const addonIds = normalizeAddonIds(q.addonIds);
     const addonIdsKey = addonIds.join(',');

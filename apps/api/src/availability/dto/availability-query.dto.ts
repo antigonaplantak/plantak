@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { normalizeAddonIds } from '../addon-ids.util';
 import {
   IsArray,
@@ -38,6 +38,7 @@ export class AvailabilityQueryDto {
   staffId?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(5)
   @Max(60)
