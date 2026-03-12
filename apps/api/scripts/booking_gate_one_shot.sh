@@ -18,6 +18,11 @@ rm -rf dist
 pnpm run build
 
 echo
+echo "== SEED GATE DATA ==" 
+node scripts/ops_seed_booking_gate.mjs
+echo "BOOKING_GATE_SEED_OK"
+
+echo
 echo "== RESTART =="
 (lsof -ti :"${PORT}" | xargs -r kill -9 || true)
 : > /tmp/plantak_api.log
