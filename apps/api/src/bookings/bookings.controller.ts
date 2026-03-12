@@ -6,6 +6,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { RescheduleBookingByIdDto } from './dto/reschedule-booking-by-id.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings.query.dto';
+import { ListBookingHistoryQueryDto } from './dto/list-booking-history.query.dto';
 import { BookingActionDto } from './dto/booking-action.dto';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BusinessRoles } from '../common/auth/business-roles.decorator';
@@ -137,6 +138,27 @@ export class BookingsController {
       staffId: q.staffId,
       locationId: q.locationId,
       status: q.status,
+      limit,
+      order,
+    });
+  }
+
+  @Get(':id/history')
+  async history(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Query() q: ListBookingHistoryQueryDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const limit = q.limit
+      ? Math.max(1, Math.min(200, parseInt(q.limit, 10) || 50))
+      : 50;
+    const order = q.order ?? 'asc';
+
+    return this.bookings.history({
+      businessId: q.businessId,
+      bookingId: id,
+      actorUserId,
       limit,
       order,
     });

@@ -698,6 +698,60 @@ export class BookingsService {
     return { items, nextCursor };
   }
 
+  async history(params: {
+    businessId: string;
+    bookingId: string;
+    actorUserId: string;
+    limit: number;
+    order: 'asc' | 'desc';
+  }) {
+    const { businessId, bookingId, actorUserId, limit, order } = params;
+
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, businessId },
+      select: { id: true, customerId: true, staffId: true },
+    });
+
+    if (!booking) throw new BadRequestException('Booking not found');
+
+    const membership = await this.prisma.businessMember.findUnique({
+      where: {
+        businessId_userId: { businessId, userId: actorUserId },
+      },
+      select: { role: true },
+    });
+
+    if (membership?.role === 'STAFF') {
+      const staff = await this.prisma.staff.findFirst({
+        where: { businessId, userId: actorUserId },
+        select: { id: true },
+      });
+
+      if (!staff || staff.id !== booking.staffId) {
+        throw new ForbiddenException('Not allowed to view booking history');
+      }
+    }
+
+    if (
+      membership?.role !== 'STAFF' &&
+      membership?.role !== 'OWNER' &&
+      membership?.role !== 'ADMIN' &&
+      booking.customerId !== actorUserId
+    ) {
+      throw new ForbiddenException('Not allowed to view booking history');
+    }
+
+    const items = await this.prisma.bookingHistory.findMany({
+      where: { businessId, bookingId: booking.id },
+      orderBy: { createdAt: order },
+      take: limit,
+    });
+
+    return { items };
+  }
+
+
+
   async cancel(input: {
     businessId: string;
     bookingId: string;
