@@ -11,6 +11,10 @@ import { AvailabilityService } from './availability.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { normalizeAddonIds } from './addon-ids.util';
 
+type AvailabilityResponse = Awaited<
+  ReturnType<AvailabilityService['getAvailability']>
+>;
+
 @ApiTags('Availability')
 @Controller('availability')
 export class AvailabilityController {
@@ -71,8 +75,8 @@ export class AvailabilityController {
       `tz=${q.tz ?? ''}`,
     );
 
-    const cached = await this.cache.getJson<any>(cacheKey);
-    if (cached) return cached;
+    const cached = await this.cache.getJson<AvailabilityResponse>(cacheKey);
+    if (cached != null) return cached;
 
     const result = await this.availabilityService.getAvailability({
       businessId: q.businessId,

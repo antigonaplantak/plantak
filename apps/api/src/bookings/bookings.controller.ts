@@ -67,12 +67,12 @@ export class BookingsController {
   }
 
   @Post('reschedule')
-  rescheduleLegacy(@Body() dto: RescheduleBookingDto, @Req() req: any) {
+  rescheduleLegacy(@Body() dto: RescheduleBookingDto, @Req() req: ReqWithUser) {
     return this.bookings.reschedule({
       ...(dto ?? {}),
       bookingId: String(dto?.bookingId || ''),
-      actorUserId: String(req?.user?.sub || ''),
-      actorRole: req?.user?.role ?? 'CUSTOMER',
+      actorUserId: String(req.user?.sub ?? ''),
+      actorRole: actorRoleFromJwt(req),
     });
   }
 
@@ -80,13 +80,13 @@ export class BookingsController {
   rescheduleById(
     @Param('id') id: string,
     @Body() dto: RescheduleBookingByIdDto,
-    @Req() req: any,
+    @Req() req: ReqWithUser,
   ) {
     return this.bookings.reschedule({
       ...(dto ?? {}),
       bookingId: id,
-      actorUserId: String(req?.user?.sub || ''),
-      actorRole: req?.user?.role ?? 'CUSTOMER',
+      actorUserId: String(req.user?.sub ?? ''),
+      actorRole: actorRoleFromJwt(req),
     });
   }
 

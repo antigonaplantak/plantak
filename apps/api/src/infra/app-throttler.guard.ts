@@ -1,15 +1,16 @@
 import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import type { Request } from 'express';
 
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
-  private getHeader(req: any, name: string): string {
-    const v = req?.headers?.[name];
+  private getHeader(req: Request, name: string): string {
+    const v = req.headers[name.toLowerCase()];
     if (Array.isArray(v)) return String(v[0] || '');
-    return String(v || '');
+    return typeof v === 'string' ? v : '';
   }
 
-  private isTrustedBypass(req: any): boolean {
+  private isTrustedBypass(req: Request): boolean {
     const headerToken =
       this.getHeader(req, 'x-load-bypass-token') ||
       this.getHeader(req, 'x-throttle-bypass-token');
@@ -22,7 +23,7 @@ export class AppThrottlerGuard extends ThrottlerGuard {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (context.getType() === 'http') {
-      const req = context.switchToHttp().getRequest();
+      const req = context.switchToHttp().getRequest<Request>();
       if (this.isTrustedBypass(req)) {
         return true;
       }

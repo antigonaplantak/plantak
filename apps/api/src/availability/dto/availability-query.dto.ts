@@ -2,7 +2,6 @@ import { Transform, Type } from 'class-transformer';
 import { normalizeAddonIds } from '../addon-ids.util';
 import {
   IsArray,
-  IsIn,
   IsInt,
   IsOptional,
   IsString,

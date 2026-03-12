@@ -17,6 +17,10 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { SetServiceStatusDto } from './dto/set-service-status.dto';
 import { ReplaceStaffServicesDto } from './dto/replace-staff-services.dto';
+import type { Request } from 'express';
+
+type ReqUser = { sub?: string; role?: string };
+type ReqWithUser = Request & { user?: ReqUser };
 
 @Controller()
 export class ServicesHttpController {
@@ -24,66 +28,78 @@ export class ServicesHttpController {
 
   @Post('services')
   @UseGuards(JwtAuthGuard)
-  create(@Req() req: any, @Body() dto: CreateServiceDto) {
-    return this.svc.createService(req.user.sub, dto);
+  create(@Req() req: ReqWithUser, @Body() dto: CreateServiceDto) {
+    return this.svc.createService(String(req.user?.sub ?? ''), dto);
   }
 
   @Get('services')
   @UseGuards(JwtAuthGuard)
-  list(@Req() req: any, @Query('businessId') businessId: string) {
-    return this.svc.listAdminServices(req.user.sub, businessId);
+  list(@Req() req: ReqWithUser, @Query('businessId') businessId: string) {
+    return this.svc.listAdminServices(String(req.user?.sub ?? ''), businessId);
   }
 
   @Get('services/:serviceId')
   @UseGuards(JwtAuthGuard)
-  getOne(@Req() req: any, @Param('serviceId') serviceId: string) {
-    return this.svc.getService(req.user.sub, serviceId);
+  getOne(@Req() req: ReqWithUser, @Param('serviceId') serviceId: string) {
+    return this.svc.getService(String(req.user?.sub ?? ''), serviceId);
   }
 
   @Patch('services/:serviceId')
   @UseGuards(JwtAuthGuard)
   update(
-    @Req() req: any,
+    @Req() req: ReqWithUser,
     @Param('serviceId') serviceId: string,
     @Body() dto: UpdateServiceDto,
   ) {
-    return this.svc.updateService(req.user.sub, serviceId, dto);
+    return this.svc.updateService(String(req.user?.sub ?? ''), serviceId, dto);
   }
 
   @Delete('services/:serviceId')
   @UseGuards(JwtAuthGuard)
-  archive(@Req() req: any, @Param('serviceId') serviceId: string) {
-    return this.svc.archiveService(req.user.sub, serviceId);
+  archive(@Req() req: ReqWithUser, @Param('serviceId') serviceId: string) {
+    return this.svc.archiveService(String(req.user?.sub ?? ''), serviceId);
   }
 
   @Patch('services/:serviceId/status')
   @UseGuards(JwtAuthGuard)
   setStatus(
-    @Req() req: any,
+    @Req() req: ReqWithUser,
     @Param('serviceId') serviceId: string,
     @Body() dto: SetServiceStatusDto,
   ) {
-    return this.svc.setServiceStatus(req.user.sub, serviceId, dto);
+    return this.svc.setServiceStatus(
+      String(req.user?.sub ?? ''),
+      serviceId,
+      dto,
+    );
   }
 
   @Put('staff/:staffId/services')
   @UseGuards(JwtAuthGuard)
   replaceStaffServices(
-    @Req() req: any,
+    @Req() req: ReqWithUser,
     @Param('staffId') staffId: string,
     @Body() dto: ReplaceStaffServicesDto,
   ) {
-    return this.svc.replaceStaffServices(req.user.sub, staffId, dto);
+    return this.svc.replaceStaffServices(
+      String(req.user?.sub ?? ''),
+      staffId,
+      dto,
+    );
   }
 
   @Get('staff/:staffId/services')
   @UseGuards(JwtAuthGuard)
   listStaffServices(
-    @Req() req: any,
+    @Req() req: ReqWithUser,
     @Param('staffId') staffId: string,
     @Query('businessId') businessId: string,
   ) {
-    return this.svc.listStaffServices(req.user.sub, staffId, businessId);
+    return this.svc.listStaffServices(
+      String(req.user?.sub ?? ''),
+      staffId,
+      businessId,
+    );
   }
 
   @Get('public/services')

@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { JobsOptions, Queue } from 'bullmq';
-import {
-  ALL_QUEUE_NAMES,
-  QUEUE_NAMES,
-  type QueueName,
-} from './queue.constants';
+import { QUEUE_NAMES, type QueueName } from './queue.constants';
 import { DLQ_SUFFIX, QUEUE_DEFAULTS } from './queue.policy';
 
 type QueuePayload = Record<string, unknown>;
