@@ -10,7 +10,9 @@ pick_next_slot_json() {
 
 set -euo pipefail
 
-cd ~/code/plantak/apps/api || exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$APP_DIR" || exit 1
 
 API="${API:-http://localhost:3001/api}"
 OWNER_EMAIL="${OWNER_EMAIL:-owner@example.com}"

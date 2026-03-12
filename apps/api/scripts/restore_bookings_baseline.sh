@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd ~/code/plantak/apps/api
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$APP_DIR"
 
 cp -f _baseline_safe_snapshot/bookings.controller.snapshot.ts src/bookings/bookings.controller.ts
 cp -f _baseline_safe_snapshot/bookings.service.snapshot.ts src/bookings/bookings.service.ts
@@ -11,7 +13,7 @@ npm run build
 
 (lsof -ti :3001 | xargs -r kill -9 || true)
 : > /tmp/plantak_api.log
-nohup bash -lc "cd ~/code/plantak/apps/api && exec node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
+nohup bash -lc "cd \"$APP_DIR\" && exec node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
 sleep 6
 
 echo "== HEALTH =="
