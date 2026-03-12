@@ -41,7 +41,6 @@ export class AuditLogInterceptor implements NestInterceptor {
         ? req.user.role.toUpperCase()
         : null;
 
-
     const q = req.query as unknown as Record<string, unknown>;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const businessId =

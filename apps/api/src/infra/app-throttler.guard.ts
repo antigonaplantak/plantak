@@ -15,9 +15,7 @@ export class AppThrottlerGuard extends ThrottlerGuard {
       this.getHeader(req, 'x-throttle-bypass-token');
 
     const envToken =
-      process.env.LOAD_BYPASS_TOKEN ||
-      process.env.THROTTLE_BYPASS_TOKEN ||
-      '';
+      process.env.LOAD_BYPASS_TOKEN || process.env.THROTTLE_BYPASS_TOKEN || '';
 
     return !!headerToken && !!envToken && headerToken === envToken;
   }

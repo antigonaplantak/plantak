@@ -7,7 +7,6 @@ import { Queue } from 'bullmq';
 import type { NextFunction, Request, Response } from 'express';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __plantakQueueDashboardMounted: boolean | undefined;
 }
 

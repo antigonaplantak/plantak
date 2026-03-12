@@ -11,7 +11,6 @@ import {
   Min,
 } from 'class-validator';
 
-
 export class AvailabilityQueryDto {
   @IsString()
   businessId!: string;
@@ -24,7 +23,10 @@ export class AvailabilityQueryDto {
   variantId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => { const ids = normalizeAddonIds(value); return ids.length ? ids : undefined; })
+  @Transform(({ value }) => {
+    const ids = normalizeAddonIds(value);
+    return ids.length ? ids : undefined;
+  })
   @IsArray()
   @IsString({ each: true })
   addonIds?: string[];

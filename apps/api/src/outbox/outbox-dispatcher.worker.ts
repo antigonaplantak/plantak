@@ -12,8 +12,7 @@ import {
 const logger = new Logger('OutboxDispatcherWorker');
 
 const LEASE_KEY =
-  process.env.OUTBOX_DISPATCHER_LEASE_KEY ??
-  'runtime:lease:outbox-dispatcher';
+  process.env.OUTBOX_DISPATCHER_LEASE_KEY ?? 'runtime:lease:outbox-dispatcher';
 
 const LEASE_TTL_MS = Number(
   process.env.OUTBOX_DISPATCHER_LEASE_TTL_MS ?? '15000',
@@ -68,7 +67,9 @@ async function bootstrap() {
   const becomeLeader = async (grant: RuntimeLeaseGrant) => {
     if (dispatcherApp) return;
 
-    mark(`OUTBOX_BOOT_4_BECOME_LEADER_BEGIN ownerId=${ownerId} fencingToken=${grant.fencingToken.toString()}`);
+    mark(
+      `OUTBOX_BOOT_4_BECOME_LEADER_BEGIN ownerId=${ownerId} fencingToken=${grant.fencingToken.toString()}`,
+    );
 
     try {
       dispatcherApp = await NestFactory.createApplicationContext(
@@ -115,14 +116,18 @@ async function bootstrap() {
   const step = async () => {
     if (stopping) return;
 
-    mark(`OUTBOX_STEP_BEGIN ownerId=${ownerId} hasDispatcher=${dispatcherApp ? 'yes' : 'no'}`);
+    mark(
+      `OUTBOX_STEP_BEGIN ownerId=${ownerId} hasDispatcher=${dispatcherApp ? 'yes' : 'no'}`,
+    );
 
     try {
       const grant = dispatcherApp
         ? await leases.renew(LEASE_KEY, ownerId, LEASE_TTL_MS)
         : await leases.tryAcquire(LEASE_KEY, ownerId, LEASE_TTL_MS);
 
-      mark(`OUTBOX_STEP_AFTER_LEASE ownerId=${ownerId} granted=${grant ? 'yes' : 'no'}`);
+      mark(
+        `OUTBOX_STEP_AFTER_LEASE ownerId=${ownerId} granted=${grant ? 'yes' : 'no'}`,
+      );
 
       if (grant) {
         currentFence = grant.fencingToken;
@@ -139,7 +144,9 @@ async function bootstrap() {
       markError(
         `OUTBOX_LEASE_STEP_FAILED ownerId=${ownerId} error=${fmtError(error)}`,
       );
-      logger.error(`outbox lease step failed ownerId=${ownerId} error=${fmtError(error)}`);
+      logger.error(
+        `outbox lease step failed ownerId=${ownerId} error=${fmtError(error)}`,
+      );
     }
   };
 
@@ -163,11 +170,15 @@ async function bootstrap() {
     }
 
     await leases.release(LEASE_KEY, ownerId).catch((error) => {
-      markError(`OUTBOX_LEASE_RELEASE_FAILED ownerId=${ownerId} error=${fmtError(error)}`);
+      markError(
+        `OUTBOX_LEASE_RELEASE_FAILED ownerId=${ownerId} error=${fmtError(error)}`,
+      );
     });
 
     await leaseApp.close().catch((error) => {
-      markError(`OUTBOX_LEASE_APP_CLOSE_FAILED ownerId=${ownerId} error=${fmtError(error)}`);
+      markError(
+        `OUTBOX_LEASE_APP_CLOSE_FAILED ownerId=${ownerId} error=${fmtError(error)}`,
+      );
     });
 
     process.exit(0);

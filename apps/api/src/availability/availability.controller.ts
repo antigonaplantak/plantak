@@ -1,10 +1,15 @@
-import { Controller, Get, Query, UsePipes, ValidationPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RedisCacheService } from '../infra/redis-cache.service';
 import { AvailabilityService } from './availability.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { normalizeAddonIds } from './addon-ids.util';
-
 
 @ApiTags('Availability')
 @Controller('availability')

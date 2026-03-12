@@ -51,14 +51,22 @@ export class QueueIdempotencyService implements OnModuleDestroy {
       return 'duplicate';
     }
 
-    const acquired = await this.redis.set(lockKey, '1', 'PX', this.lockMs, 'NX');
+    const acquired = await this.redis.set(
+      lockKey,
+      '1',
+      'PX',
+      this.lockMs,
+      'NX',
+    );
     if (!acquired) {
       const doneAfterBusy = await this.redis.exists(doneKey);
       if (doneAfterBusy) {
         return 'duplicate';
       }
 
-      throw new Error(`idempotency lock busy queue=${queueName} key=${normalized}`);
+      throw new Error(
+        `idempotency lock busy queue=${queueName} key=${normalized}`,
+      );
     }
 
     try {
@@ -69,7 +77,12 @@ export class QueueIdempotencyService implements OnModuleDestroy {
 
       await handler();
 
-      await this.redis.set(doneKey, new Date().toISOString(), 'EX', this.ttlSec);
+      await this.redis.set(
+        doneKey,
+        new Date().toISOString(),
+        'EX',
+        this.ttlSec,
+      );
       return 'processed';
     } finally {
       await this.redis.del(lockKey);

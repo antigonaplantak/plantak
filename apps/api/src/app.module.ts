@@ -20,7 +20,8 @@ import { TimeOffModule } from './time-off/time-off.module';
 @Module({
   providers: [
     { provide: APP_FILTER, useClass: SentryFilter },
-    { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor }],
+    { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor },
+  ],
   imports: [
     QueueDashboardModule,
     InfraModule,
@@ -35,6 +36,7 @@ import { TimeOffModule } from './time-off/time-off.module';
     HealthModule,
     ServicesModule,
     AvailabilityModule,
-    BookingsModule],
+    BookingsModule,
+  ],
 })
 export class AppModule {}

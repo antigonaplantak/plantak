@@ -21,9 +21,11 @@ export class WebhooksProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<JobData, { ok: true }, string>): Promise<{ ok: true }> {
+  async process(
+    job: Job<JobData, { ok: true }, string>,
+  ): Promise<{ ok: true }> {
     const queueName = QUEUE_NAMES.webhooks;
-    const data = (job.data ?? {}) as JobData;
+    const data = job.data ?? {};
     const attempt = Number(job.attemptsMade ?? 0) + 1;
     const maxAttempts = Number(job.opts.attempts ?? 1);
 

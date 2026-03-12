@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { JobsOptions, Queue } from 'bullmq';
-import { ALL_QUEUE_NAMES, QUEUE_NAMES, type QueueName } from './queue.constants';
+import {
+  ALL_QUEUE_NAMES,
+  QUEUE_NAMES,
+  type QueueName,
+} from './queue.constants';
 import { DLQ_SUFFIX, QUEUE_DEFAULTS } from './queue.policy';
 
 type QueuePayload = Record<string, unknown>;
@@ -65,15 +69,27 @@ export class QueueService {
     return queue.add(jobName, data, opts);
   }
 
-  async addNotification(jobName: string, data: QueuePayload, opts: JobsOptions = {}) {
+  async addNotification(
+    jobName: string,
+    data: QueuePayload,
+    opts: JobsOptions = {},
+  ) {
     return this.add(QUEUE_NAMES.notifications, jobName, data, opts);
   }
 
-  async addWebhook(jobName: string, data: QueuePayload, opts: JobsOptions = {}) {
+  async addWebhook(
+    jobName: string,
+    data: QueuePayload,
+    opts: JobsOptions = {},
+  ) {
     return this.add(QUEUE_NAMES.webhooks, jobName, data, opts);
   }
 
-  async addSyncJob(jobName: string, data: QueuePayload, opts: JobsOptions = {}) {
+  async addSyncJob(
+    jobName: string,
+    data: QueuePayload,
+    opts: JobsOptions = {},
+  ) {
     return this.add(QUEUE_NAMES.syncJobs, jobName, data, opts);
   }
 

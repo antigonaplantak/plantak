@@ -4,7 +4,9 @@ import { QueueModule } from './queue.module';
 import { QueueRetentionService } from './queue.retention.service';
 
 async function bootstrap() {
-  const app = await NestFactory.createApplicationContext(QueueModule, { logger: ['log', 'warn', 'error'] });
+  const app = await NestFactory.createApplicationContext(QueueModule, {
+    logger: ['log', 'warn', 'error'],
+  });
   try {
     const svc = app.get(QueueRetentionService);
     await svc.cleanup();

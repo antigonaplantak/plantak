@@ -9,11 +9,12 @@ export class QueueSinkService {
   async write(queue: string, payload: Record<string, unknown>) {
     await fs.mkdir(this.dir, { recursive: true });
     const file = join(this.dir, `${queue}.jsonl`);
-    const line = JSON.stringify({
-      at: new Date().toISOString(),
-      queue,
-      ...payload,
-    }) + '\n';
+    const line =
+      JSON.stringify({
+        at: new Date().toISOString(),
+        queue,
+        ...payload,
+      }) + '\n';
     await fs.appendFile(file, line, 'utf8');
   }
 }

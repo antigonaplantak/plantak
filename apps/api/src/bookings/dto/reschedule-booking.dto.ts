@@ -6,7 +6,7 @@ export class RescheduleBookingDto {
   @IsOptional()
   @IsString()
   bookingId?: string;
-// Variant B
+  // Variant B
   @IsOptional()
   @IsISO8601()
   newStartAt?: string;

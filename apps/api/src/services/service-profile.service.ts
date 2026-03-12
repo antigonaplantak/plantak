@@ -154,7 +154,8 @@ export class ServiceProfileService {
       const byId = new Map(rows.map((x) => [x.id, x]));
       addons = addonIds.map((id) => {
         const row = byId.get(id);
-        if (!row) throw new BadRequestException('One or more addons not available');
+        if (!row)
+          throw new BadRequestException('One or more addons not available');
         return row;
       });
     }

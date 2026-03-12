@@ -5,9 +5,12 @@ import { SchedulerWorkerModule } from './scheduler.worker.module';
 
 async function bootstrap() {
   const logger = new Logger('SchedulerWorker');
-  const app = await NestFactory.createApplicationContext(SchedulerWorkerModule, {
-    bufferLogs: true,
-  });
+  const app = await NestFactory.createApplicationContext(
+    SchedulerWorkerModule,
+    {
+      bufferLogs: true,
+    },
+  );
 
   logger.log(`scheduler worker active pid=${process.pid}`);
 

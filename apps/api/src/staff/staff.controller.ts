@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -28,7 +37,11 @@ export class StaffController {
     @Param('staffId') staffId: string,
     @Query('businessId') businessId: string,
   ) {
-    return this.staff.getProfile(String(req.user?.sub ?? ''), staffId, businessId);
+    return this.staff.getProfile(
+      String(req.user?.sub ?? ''),
+      staffId,
+      businessId,
+    );
   }
 
   @Patch(':staffId/profile')
@@ -39,7 +52,12 @@ export class StaffController {
     @Query('businessId') businessId: string,
     @Body() dto: UpdateStaffProfileDto,
   ) {
-    return this.staff.updateProfile(String(req.user?.sub ?? ''), staffId, businessId, dto);
+    return this.staff.updateProfile(
+      String(req.user?.sub ?? ''),
+      staffId,
+      businessId,
+      dto,
+    );
   }
 
   @Get(':staffId/readiness')
@@ -49,6 +67,10 @@ export class StaffController {
     @Param('staffId') staffId: string,
     @Query('businessId') businessId: string,
   ) {
-    return this.staff.getReadiness(String(req.user?.sub ?? ''), staffId, businessId);
+    return this.staff.getReadiness(
+      String(req.user?.sub ?? ''),
+      staffId,
+      businessId,
+    );
   }
 }

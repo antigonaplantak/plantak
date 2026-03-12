@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ServiceAddonsService } from './service-addons.service';
 import { CreateServiceAddonDto } from './dto/create-service-addon.dto';
@@ -10,7 +20,11 @@ export class ServiceAddonsController {
   constructor(private readonly svc: ServiceAddonsService) {}
 
   @Post()
-  create(@Req() req: any, @Param('serviceId') serviceId: string, @Body() dto: CreateServiceAddonDto) {
+  create(
+    @Req() req: any,
+    @Param('serviceId') serviceId: string,
+    @Body() dto: CreateServiceAddonDto,
+  ) {
     return this.svc.create(req.user.sub, serviceId, dto);
   }
 
@@ -30,7 +44,11 @@ export class ServiceAddonsController {
   }
 
   @Delete(':addonId')
-  archive(@Req() req: any, @Param('serviceId') serviceId: string, @Param('addonId') addonId: string) {
+  archive(
+    @Req() req: any,
+    @Param('serviceId') serviceId: string,
+    @Param('addonId') addonId: string,
+  ) {
     return this.svc.archive(req.user.sub, serviceId, addonId);
   }
 }

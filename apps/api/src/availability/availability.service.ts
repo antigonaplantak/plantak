@@ -88,7 +88,8 @@ export class AvailabilityService {
       tz,
     );
 
-    const results: Array<{ staffId: string; totalMin: number; slots: Slot[] }> = [];
+    const results: Array<{ staffId: string; totalMin: number; slots: Slot[] }> =
+      [];
 
     for (const s of staff) {
       const profile = await this.serviceProfiles.resolveForSelection({
@@ -140,11 +141,7 @@ export class AvailabilityService {
           w.startMin,
           tz,
         );
-        const windowEndUtc = minutesToDateInTzAsUtc(
-          params.date,
-          w.endMin,
-          tz,
-        );
+        const windowEndUtc = minutesToDateInTzAsUtc(params.date, w.endMin, tz);
 
         for (
           let cur = new Date(windowStartUtc.getTime());

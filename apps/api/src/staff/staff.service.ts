@@ -61,7 +61,11 @@ export class StaffService {
   }
 
   async listForBusiness(userId: string, businessId: string) {
-    await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     return this.prisma.staff.findMany({
       where: { businessId },
@@ -84,7 +88,11 @@ export class StaffService {
   }
 
   async getProfile(userId: string, staffId: string, businessId: string) {
-    await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== businessId) {
@@ -100,7 +108,11 @@ export class StaffService {
     businessId: string,
     dto: UpdateStaffProfileDto,
   ) {
-    const role = await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    const role = await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
     const staff = await this.getStaffOrThrow(staffId);
 
     if (staff.businessId !== businessId) {
@@ -136,30 +148,35 @@ export class StaffService {
   }
 
   async getReadiness(userId: string, staffId: string, businessId: string) {
-    await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== businessId) {
       throw new ForbiddenException('Forbidden');
     }
 
-    const [workingHoursCount, futureTimeOffCount, activeServiceLinks] = await Promise.all([
-      this.prisma.workingHour.count({
-        where: { staffId },
-      }),
-      this.prisma.timeOff.count({
-        where: {
-          staffId,
-          endAt: { gte: new Date() },
-        },
-      }),
-      this.prisma.serviceStaff.count({
-        where: {
-          staffId,
-          isActive: true,
-        },
-      }),
-    ]);
+    const [workingHoursCount, futureTimeOffCount, activeServiceLinks] =
+      await Promise.all([
+        this.prisma.workingHour.count({
+          where: { staffId },
+        }),
+        this.prisma.timeOff.count({
+          where: {
+            staffId,
+            endAt: { gte: new Date() },
+          },
+        }),
+        this.prisma.serviceStaff.count({
+          where: {
+            staffId,
+            isActive: true,
+          },
+        }),
+      ]);
 
     const hasDisplayName = Boolean(String(staff.displayName ?? '').trim());
     const linkedUser = Boolean(staff.userId);

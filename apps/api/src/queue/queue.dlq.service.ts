@@ -31,7 +31,9 @@ export class QueueDlqService {
   ) {
     const target = dlqName(queueName);
     const originalJobId =
-      typeof payload.originalJobId === 'string' ? payload.originalJobId : undefined;
+      typeof payload.originalJobId === 'string'
+        ? payload.originalJobId
+        : undefined;
 
     await this.queues.addRaw(target, `dlq.${jobName}`, payload, {
       jobId: this.buildDlqJobId(queueName, originalJobId),

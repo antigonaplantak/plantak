@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,7 +31,11 @@ export class WorkingHoursController {
     @Param('staffId') staffId: string,
     @Query('businessId') businessId: string,
   ) {
-    return this.workingHours.list(String(req.user?.sub ?? ''), staffId, businessId);
+    return this.workingHours.list(
+      String(req.user?.sub ?? ''),
+      staffId,
+      businessId,
+    );
   }
 
   @Put()

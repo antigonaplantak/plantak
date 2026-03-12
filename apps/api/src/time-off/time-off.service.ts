@@ -83,7 +83,11 @@ export class TimeOffService {
   }
 
   async list(userId: string, staffId: string, businessId: string) {
-    await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== businessId) {
@@ -105,7 +109,11 @@ export class TimeOffService {
   }
 
   async create(userId: string, staffId: string, dto: CreateTimeOffDto) {
-    const role = await this.assertBusinessAccess(userId, dto.businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    const role = await this.assertBusinessAccess(userId, dto.businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== dto.businessId) {
@@ -139,13 +147,22 @@ export class TimeOffService {
     return created;
   }
 
-  async update(userId: string, staffId: string, timeOffId: string, dto: UpdateTimeOffDto) {
+  async update(
+    userId: string,
+    staffId: string,
+    timeOffId: string,
+    dto: UpdateTimeOffDto,
+  ) {
     const businessId = String(dto.businessId ?? '');
     if (!businessId) {
       throw new BadRequestException('businessId is required');
     }
 
-    const role = await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    const role = await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== businessId) {
@@ -174,7 +191,9 @@ export class TimeOffService {
       data: {
         startAt: start!,
         endAt: end!,
-        ...(dto.reason !== undefined ? { reason: dto.reason?.trim() || null } : {}),
+        ...(dto.reason !== undefined
+          ? { reason: dto.reason?.trim() || null }
+          : {}),
       },
       select: {
         id: true,
@@ -190,8 +209,17 @@ export class TimeOffService {
     return updated;
   }
 
-  async remove(userId: string, staffId: string, timeOffId: string, businessId: string) {
-    const role = await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+  async remove(
+    userId: string,
+    staffId: string,
+    timeOffId: string,
+    businessId: string,
+  ) {
+    const role = await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== businessId) {

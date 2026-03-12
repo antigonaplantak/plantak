@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BookingsService } from './bookings.service';
@@ -58,15 +67,12 @@ export class BookingsController {
   }
 
   @Post('reschedule')
-  rescheduleLegacy(
-    @Body() dto: RescheduleBookingDto,
-    @Req() req: any,
-  ) {
+  rescheduleLegacy(@Body() dto: RescheduleBookingDto, @Req() req: any) {
     return this.bookings.reschedule({
       ...(dto ?? {}),
       bookingId: String(dto?.bookingId || ''),
       actorUserId: String(req?.user?.sub || ''),
-      actorRole: (req?.user?.role ?? 'CUSTOMER') as any,
+      actorRole: req?.user?.role ?? 'CUSTOMER',
     });
   }
 
@@ -80,7 +86,7 @@ export class BookingsController {
       ...(dto ?? {}),
       bookingId: id,
       actorUserId: String(req?.user?.sub || ''),
-      actorRole: (req?.user?.role ?? 'CUSTOMER') as any,
+      actorRole: req?.user?.role ?? 'CUSTOMER',
     });
   }
 

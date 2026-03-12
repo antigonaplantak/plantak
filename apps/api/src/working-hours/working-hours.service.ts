@@ -101,7 +101,11 @@ export class WorkingHoursService {
   }
 
   async list(userId: string, staffId: string, businessId: string) {
-    await this.assertBusinessAccess(userId, businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    await this.assertBusinessAccess(userId, businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== businessId) {
@@ -124,7 +128,11 @@ export class WorkingHoursService {
   }
 
   async replace(userId: string, staffId: string, dto: ReplaceWorkingHoursDto) {
-    const role = await this.assertBusinessAccess(userId, dto.businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    const role = await this.assertBusinessAccess(userId, dto.businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
 
     const staff = await this.getStaffOrThrow(staffId);
     if (staff.businessId !== dto.businessId) {

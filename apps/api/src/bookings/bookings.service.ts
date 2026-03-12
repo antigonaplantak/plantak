@@ -59,7 +59,12 @@ export class BookingsService {
     tz = 'UTC',
   ) {
     try {
-      if (booking?.businessId && booking?.serviceId && booking?.staffId && booking?.startAt) {
+      if (
+        booking?.businessId &&
+        booking?.serviceId &&
+        booking?.staffId &&
+        booking?.startAt
+      ) {
         const start =
           booking.startAt instanceof Date
             ? booking.startAt
@@ -162,9 +167,7 @@ export class BookingsService {
     });
   }
 
-  private getCustomerNoticeMinutes(
-    action: 'cancel' | 'reschedule',
-  ): number {
+  private getCustomerNoticeMinutes(action: 'cancel' | 'reschedule'): number {
     const envName =
       action === 'cancel'
         ? 'BOOKING_CUSTOMER_CANCEL_NOTICE_MINUTES'
@@ -363,52 +366,52 @@ export class BookingsService {
     try {
       const created = await this.prisma.$transaction(async (tx) => {
         const created = await tx.booking.create({
-        data: {
-          businessId: input.businessId,
-          customerId: input.customerId,
-          staffId: input.staffId,
-          serviceId: input.serviceId,
-          serviceVariantId: profile.serviceVariantId,
-          addonIdsSnapshot: profile.addonIds,
-          serviceNameSnapshot: profile.serviceName,
-          serviceVariantNameSnapshot: profile.serviceVariantName,
-          addonsSnapshot: profile.addons as Prisma.InputJsonValue,
-          durationMinSnapshot: profile.durationMin,
-          bufferBeforeMinSnapshot: profile.bufferBeforeMin,
-          bufferAfterMinSnapshot: profile.bufferAfterMin,
-          priceCentsSnapshot: profile.priceCents,
-          currencySnapshot: profile.currency,
-          totalMinSnapshot: profile.totalMin,
-          locationId: input.locationId ?? null,
-          startAt: start,
-          endAt: end,
-          status: 'PENDING',
-          notes: input.notes ?? null,
-        },
-        select: {
-          id: true,
-          businessId: true,
-          staffId: true,
-          serviceId: true,
-          serviceVariantId: true,
-          addonIdsSnapshot: true,
-          serviceNameSnapshot: true,
-          serviceVariantNameSnapshot: true,
-          addonsSnapshot: true,
-          durationMinSnapshot: true,
-          bufferBeforeMinSnapshot: true,
-          bufferAfterMinSnapshot: true,
-          priceCentsSnapshot: true,
-          currencySnapshot: true,
-          totalMinSnapshot: true,
-          customerId: true,
-          locationId: true,
-          startAt: true,
-          endAt: true,
-          status: true,
-          createdAt: true,
-        },
-      });
+          data: {
+            businessId: input.businessId,
+            customerId: input.customerId,
+            staffId: input.staffId,
+            serviceId: input.serviceId,
+            serviceVariantId: profile.serviceVariantId,
+            addonIdsSnapshot: profile.addonIds,
+            serviceNameSnapshot: profile.serviceName,
+            serviceVariantNameSnapshot: profile.serviceVariantName,
+            addonsSnapshot: profile.addons as Prisma.InputJsonValue,
+            durationMinSnapshot: profile.durationMin,
+            bufferBeforeMinSnapshot: profile.bufferBeforeMin,
+            bufferAfterMinSnapshot: profile.bufferAfterMin,
+            priceCentsSnapshot: profile.priceCents,
+            currencySnapshot: profile.currency,
+            totalMinSnapshot: profile.totalMin,
+            locationId: input.locationId ?? null,
+            startAt: start,
+            endAt: end,
+            status: 'PENDING',
+            notes: input.notes ?? null,
+          },
+          select: {
+            id: true,
+            businessId: true,
+            staffId: true,
+            serviceId: true,
+            serviceVariantId: true,
+            addonIdsSnapshot: true,
+            serviceNameSnapshot: true,
+            serviceVariantNameSnapshot: true,
+            addonsSnapshot: true,
+            durationMinSnapshot: true,
+            bufferBeforeMinSnapshot: true,
+            bufferAfterMinSnapshot: true,
+            priceCentsSnapshot: true,
+            currencySnapshot: true,
+            totalMinSnapshot: true,
+            customerId: true,
+            locationId: true,
+            startAt: true,
+            endAt: true,
+            status: true,
+            createdAt: true,
+          },
+        });
 
         await this.writeBookingHistory(tx, {
           bookingId: created.id,
@@ -749,8 +752,6 @@ export class BookingsService {
 
     return { items };
   }
-
-
 
   async cancel(input: {
     businessId: string;

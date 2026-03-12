@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -42,7 +53,12 @@ export class TimeOffController {
     @Param('timeOffId') timeOffId: string,
     @Body() dto: UpdateTimeOffDto,
   ) {
-    return this.timeOff.update(String(req.user?.sub ?? ''), staffId, timeOffId, dto);
+    return this.timeOff.update(
+      String(req.user?.sub ?? ''),
+      staffId,
+      timeOffId,
+      dto,
+    );
   }
 
   @Delete(':timeOffId')
@@ -53,6 +69,11 @@ export class TimeOffController {
     @Param('timeOffId') timeOffId: string,
     @Query('businessId') businessId: string,
   ) {
-    return this.timeOff.remove(String(req.user?.sub ?? ''), staffId, timeOffId, businessId);
+    return this.timeOff.remove(
+      String(req.user?.sub ?? ''),
+      staffId,
+      timeOffId,
+      businessId,
+    );
   }
 }

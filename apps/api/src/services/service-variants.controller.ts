@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ServiceVariantsService } from './service-variants.service';
 import { CreateServiceVariantDto } from './dto/create-service-variant.dto';
@@ -10,7 +20,11 @@ export class ServiceVariantsController {
   constructor(private readonly svc: ServiceVariantsService) {}
 
   @Post()
-  create(@Req() req: any, @Param('serviceId') serviceId: string, @Body() dto: CreateServiceVariantDto) {
+  create(
+    @Req() req: any,
+    @Param('serviceId') serviceId: string,
+    @Body() dto: CreateServiceVariantDto,
+  ) {
     return this.svc.create(req.user.sub, serviceId, dto);
   }
 
@@ -30,7 +44,11 @@ export class ServiceVariantsController {
   }
 
   @Delete(':variantId')
-  archive(@Req() req: any, @Param('serviceId') serviceId: string, @Param('variantId') variantId: string) {
+  archive(
+    @Req() req: any,
+    @Param('serviceId') serviceId: string,
+    @Param('variantId') variantId: string,
+  ) {
     return this.svc.archive(req.user.sub, serviceId, variantId);
   }
 }

@@ -98,10 +98,7 @@ export class RedisBackpressureService implements OnModuleDestroy {
       Math.ceil(options.windowMs / options.maxPerWindow),
     );
 
-    const safetyMarginMs = Math.max(
-      50,
-      Math.ceil(minSpacingMs * 0.15),
-    );
+    const safetyMarginMs = Math.max(50, Math.ceil(minSpacingMs * 0.15));
 
     const effectiveSpacingMs = minSpacingMs + safetyMarginMs;
 
@@ -148,8 +145,12 @@ export class RedisBackpressureService implements OnModuleDestroy {
       }
 
       const waitForRate = nextAllowedAt > now ? nextAllowedAt - now : 25;
-      const waitForConcurrency = concurrentCount >= options.maxConcurrent ? 50 : 0;
-      const sleepMs = Math.min(250, Math.max(25, waitForRate, waitForConcurrency));
+      const waitForConcurrency =
+        concurrentCount >= options.maxConcurrent ? 50 : 0;
+      const sleepMs = Math.min(
+        250,
+        Math.max(25, waitForRate, waitForConcurrency),
+      );
 
       await sleep(sleepMs);
     }

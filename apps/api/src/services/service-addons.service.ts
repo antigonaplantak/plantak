@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceAddonDto } from './dto/create-service-addon.dto';
 import { UpdateServiceAddonDto } from './dto/update-service-addon.dto';
@@ -12,7 +16,8 @@ export class ServiceAddonsService {
       where: { id: serviceId },
       select: { id: true, businessId: true, archivedAt: true },
     });
-    if (!service || service.archivedAt) throw new NotFoundException('Service not found');
+    if (!service || service.archivedAt)
+      throw new NotFoundException('Service not found');
     return service;
   }
 
@@ -26,12 +31,16 @@ export class ServiceAddonsService {
       select: { role: true },
     });
     if (!member) throw new ForbiddenException('No business access');
-    if (!allowed.includes(member.role as any)) throw new ForbiddenException('Insufficient role');
+    if (!allowed.includes(member.role as any))
+      throw new ForbiddenException('Insufficient role');
   }
 
   async create(userId: string, serviceId: string, dto: CreateServiceAddonDto) {
     const service = await this.getServiceOrThrow(serviceId);
-    await this.assertBusinessAccess(userId, service.businessId, ['OWNER', 'ADMIN']);
+    await this.assertBusinessAccess(userId, service.businessId, [
+      'OWNER',
+      'ADMIN',
+    ]);
     return this.prisma.serviceAddon.create({
       data: {
         serviceId,
@@ -49,16 +58,28 @@ export class ServiceAddonsService {
 
   async list(userId: string, serviceId: string) {
     const service = await this.getServiceOrThrow(serviceId);
-    await this.assertBusinessAccess(userId, service.businessId, ['OWNER', 'ADMIN', 'STAFF']);
+    await this.assertBusinessAccess(userId, service.businessId, [
+      'OWNER',
+      'ADMIN',
+      'STAFF',
+    ]);
     return this.prisma.serviceAddon.findMany({
       where: { serviceId, archivedAt: null },
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
     });
   }
 
-  async update(userId: string, serviceId: string, addonId: string, dto: UpdateServiceAddonDto) {
+  async update(
+    userId: string,
+    serviceId: string,
+    addonId: string,
+    dto: UpdateServiceAddonDto,
+  ) {
     const service = await this.getServiceOrThrow(serviceId);
-    await this.assertBusinessAccess(userId, service.businessId, ['OWNER', 'ADMIN']);
+    await this.assertBusinessAccess(userId, service.businessId, [
+      'OWNER',
+      'ADMIN',
+    ]);
 
     const existing = await this.prisma.serviceAddon.findFirst({
       where: { id: addonId, serviceId, archivedAt: null },
@@ -70,12 +91,22 @@ export class ServiceAddonsService {
       where: { id: addonId },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.durationMin !== undefined ? { durationMin: dto.durationMin } : {}),
+        ...(dto.durationMin !== undefined
+          ? { durationMin: dto.durationMin }
+          : {}),
         ...(dto.priceCents !== undefined ? { priceCents: dto.priceCents } : {}),
-        ...(dto.bufferBeforeMin !== undefined ? { bufferBeforeMin: dto.bufferBeforeMin } : {}),
-        ...(dto.bufferAfterMin !== undefined ? { bufferAfterMin: dto.bufferAfterMin } : {}),
-        ...(dto.visibility !== undefined ? { visibility: dto.visibility as any } : {}),
-        ...(dto.onlineBookingEnabled !== undefined ? { onlineBookingEnabled: dto.onlineBookingEnabled } : {}),
+        ...(dto.bufferBeforeMin !== undefined
+          ? { bufferBeforeMin: dto.bufferBeforeMin }
+          : {}),
+        ...(dto.bufferAfterMin !== undefined
+          ? { bufferAfterMin: dto.bufferAfterMin }
+          : {}),
+        ...(dto.visibility !== undefined
+          ? { visibility: dto.visibility as any }
+          : {}),
+        ...(dto.onlineBookingEnabled !== undefined
+          ? { onlineBookingEnabled: dto.onlineBookingEnabled }
+          : {}),
         ...(dto.position !== undefined ? { position: dto.position } : {}),
       },
     });
@@ -83,7 +114,10 @@ export class ServiceAddonsService {
 
   async archive(userId: string, serviceId: string, addonId: string) {
     const service = await this.getServiceOrThrow(serviceId);
-    await this.assertBusinessAccess(userId, service.businessId, ['OWNER', 'ADMIN']);
+    await this.assertBusinessAccess(userId, service.businessId, [
+      'OWNER',
+      'ADMIN',
+    ]);
 
     const existing = await this.prisma.serviceAddon.findFirst({
       where: { id: addonId, serviceId, archivedAt: null },

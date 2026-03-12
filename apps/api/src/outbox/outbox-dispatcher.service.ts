@@ -124,7 +124,9 @@ export class OutboxDispatcherService {
 
   private async markRetryOrFailed(row: DbOutboxRow, err: unknown) {
     const message =
-      err instanceof Error ? err.message.slice(0, 2000) : String(err).slice(0, 2000);
+      err instanceof Error
+        ? err.message.slice(0, 2000)
+        : String(err).slice(0, 2000);
 
     const nextAttempt = Number(row.attempts ?? 0) + 1;
 

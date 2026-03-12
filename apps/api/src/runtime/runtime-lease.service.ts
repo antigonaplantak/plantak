@@ -26,7 +26,9 @@ export class RuntimeLeaseService {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs);
 
-    this.mark(`RUNTIME_LEASE_TRY_ACQUIRE_BEGIN leaseKey=${leaseKey} ownerId=${ownerId} ttlMs=${ttlMs}`);
+    this.mark(
+      `RUNTIME_LEASE_TRY_ACQUIRE_BEGIN leaseKey=${leaseKey} ownerId=${ownerId} ttlMs=${ttlMs}`,
+    );
 
     await this.prisma.runtimeLease.createMany({
       data: [
@@ -41,7 +43,9 @@ export class RuntimeLeaseService {
       skipDuplicates: true,
     });
 
-    this.mark(`RUNTIME_LEASE_TRY_ACQUIRE_AFTER_CREATE_MANY leaseKey=${leaseKey} ownerId=${ownerId}`);
+    this.mark(
+      `RUNTIME_LEASE_TRY_ACQUIRE_AFTER_CREATE_MANY leaseKey=${leaseKey} ownerId=${ownerId}`,
+    );
 
     const res = await this.prisma.runtimeLease.updateMany({
       where: {
@@ -56,10 +60,14 @@ export class RuntimeLeaseService {
       },
     });
 
-    this.mark(`RUNTIME_LEASE_TRY_ACQUIRE_AFTER_UPDATE_MANY leaseKey=${leaseKey} ownerId=${ownerId} count=${res.count}`);
+    this.mark(
+      `RUNTIME_LEASE_TRY_ACQUIRE_AFTER_UPDATE_MANY leaseKey=${leaseKey} ownerId=${ownerId} count=${res.count}`,
+    );
 
     if (res.count !== 1) {
-      this.mark(`RUNTIME_LEASE_TRY_ACQUIRE_MISS leaseKey=${leaseKey} ownerId=${ownerId}`);
+      this.mark(
+        `RUNTIME_LEASE_TRY_ACQUIRE_MISS leaseKey=${leaseKey} ownerId=${ownerId}`,
+      );
       return null;
     }
 
@@ -91,7 +99,9 @@ export class RuntimeLeaseService {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs);
 
-    this.mark(`RUNTIME_LEASE_RENEW_BEGIN leaseKey=${leaseKey} ownerId=${ownerId} ttlMs=${ttlMs}`);
+    this.mark(
+      `RUNTIME_LEASE_RENEW_BEGIN leaseKey=${leaseKey} ownerId=${ownerId} ttlMs=${ttlMs}`,
+    );
 
     const res = await this.prisma.runtimeLease.updateMany({
       where: {
@@ -105,10 +115,14 @@ export class RuntimeLeaseService {
       },
     });
 
-    this.mark(`RUNTIME_LEASE_RENEW_AFTER_UPDATE_MANY leaseKey=${leaseKey} ownerId=${ownerId} count=${res.count}`);
+    this.mark(
+      `RUNTIME_LEASE_RENEW_AFTER_UPDATE_MANY leaseKey=${leaseKey} ownerId=${ownerId} count=${res.count}`,
+    );
 
     if (res.count !== 1) {
-      this.mark(`RUNTIME_LEASE_RENEW_MISS leaseKey=${leaseKey} ownerId=${ownerId}`);
+      this.mark(
+        `RUNTIME_LEASE_RENEW_MISS leaseKey=${leaseKey} ownerId=${ownerId}`,
+      );
       return null;
     }
 
@@ -131,7 +145,9 @@ export class RuntimeLeaseService {
   async release(leaseKey: string, ownerId: string): Promise<boolean> {
     const now = new Date();
 
-    this.mark(`RUNTIME_LEASE_RELEASE_BEGIN leaseKey=${leaseKey} ownerId=${ownerId}`);
+    this.mark(
+      `RUNTIME_LEASE_RELEASE_BEGIN leaseKey=${leaseKey} ownerId=${ownerId}`,
+    );
 
     const res = await this.prisma.runtimeLease.updateMany({
       where: {
@@ -144,7 +160,9 @@ export class RuntimeLeaseService {
       },
     });
 
-    this.mark(`RUNTIME_LEASE_RELEASE_AFTER_UPDATE_MANY leaseKey=${leaseKey} ownerId=${ownerId} count=${res.count}`);
+    this.mark(
+      `RUNTIME_LEASE_RELEASE_AFTER_UPDATE_MANY leaseKey=${leaseKey} ownerId=${ownerId} count=${res.count}`,
+    );
 
     if (res.count === 1) {
       this.logger.warn(`lease released key=${leaseKey} owner=${ownerId}`);

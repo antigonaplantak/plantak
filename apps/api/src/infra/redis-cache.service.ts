@@ -1,17 +1,17 @@
-import { Injectable, OnModuleDestroy } from "@nestjs/common";
-import Redis from "ioredis";
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import Redis from 'ioredis';
 
 @Injectable()
 export class RedisCacheService implements OnModuleDestroy {
   private readonly redis: Redis;
 
   constructor() {
-    this.redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
+    this.redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
   }
 
   key(...parts: Array<string | number>) {
-    const prefix = process.env.CACHE_PREFIX ?? "plantak";
-    return [prefix, ...parts.map(String)].join(":");
+    const prefix = process.env.CACHE_PREFIX ?? 'plantak';
+    return [prefix, ...parts.map(String)].join(':');
   }
 
   async getJson<T>(key: string): Promise<T | null> {
@@ -27,7 +27,7 @@ export class RedisCacheService implements OnModuleDestroy {
   async setJson(key: string, value: unknown, ttlSec: number) {
     const body = JSON.stringify(value);
     if (ttlSec > 0) {
-      await this.redis.set(key, body, "EX", ttlSec);
+      await this.redis.set(key, body, 'EX', ttlSec);
     } else {
       await this.redis.set(key, body);
     }
@@ -39,15 +39,20 @@ export class RedisCacheService implements OnModuleDestroy {
     await this.redis.unlink(...list);
   }
 
-
   async delByPrefix(prefix: string) {
-    let cursor = "0";
+    let cursor = '0';
     const keys: string[] = [];
     do {
-      const res = await this.redis.scan(cursor, "MATCH", `${prefix}*`, "COUNT", 200);
+      const res = await this.redis.scan(
+        cursor,
+        'MATCH',
+        `${prefix}*`,
+        'COUNT',
+        200,
+      );
       cursor = res[0];
       keys.push(...res[1]);
-    } while (cursor !== "0");
+    } while (cursor !== '0');
     if (keys.length) {
       await this.redis.del(...keys);
     }
