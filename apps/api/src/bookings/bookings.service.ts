@@ -200,6 +200,49 @@ export class BookingsService {
     throw new BadRequestException('Reschedule window has passed');
   }
 
+  private getLatePolicyMinutes(): number {
+    const raw = Number(process.env.BOOKING_LATE_POLICY_MINUTES);
+    if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+    return 10;
+  }
+
+  private getNoShowPolicyMinutes(): number {
+    const raw = Number(process.env.BOOKING_NO_SHOW_POLICY_MINUTES);
+    if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+    return 30;
+  }
+
+  private buildAttendancePolicyMeta(input: {
+    startAt: Date;
+    actorRole: ActorRole;
+  }): Prisma.InputJsonValue {
+    const now = new Date();
+    const lateAt = new Date(
+      input.startAt.getTime() + this.getLatePolicyMinutes() * 60_000,
+    );
+    const noShowAt = new Date(
+      input.startAt.getTime() + this.getNoShowPolicyMinutes() * 60_000,
+    );
+
+    const state =
+      now >= noShowAt
+        ? 'NO_SHOW_WINDOW'
+        : now >= lateAt
+          ? 'LATE_WINDOW'
+          : 'ON_TIME';
+
+    return {
+      evaluatedAt: now.toISOString(),
+      bookingStartAt: input.startAt.toISOString(),
+      actorRole: input.actorRole,
+      latePolicyMinutes: this.getLatePolicyMinutes(),
+      noShowPolicyMinutes: this.getNoShowPolicyMinutes(),
+      latePolicyTriggered: state == 'LATE_WINDOW',
+      noShowPolicyTriggered: state == 'NO_SHOW_WINDOW',
+      state,
+    } as Prisma.InputJsonValue;
+  }
+
   private idemGet(businessId: string, key?: string) {
     if (!key) return null;
     return this.prisma.idempotencyKey.findUnique({
@@ -539,6 +582,10 @@ export class BookingsService {
           toEndAt: updated.endAt,
           actorUserId: input.actorUserId,
           actorRole,
+          meta: this.buildAttendancePolicyMeta({
+            startAt: booking.startAt,
+            actorRole,
+          }),
         });
 
         if (input.idempotencyKey) {
@@ -749,6 +796,10 @@ export class BookingsService {
         toEndAt: updated.endAt,
         actorUserId: input.actorUserId,
         actorRole,
+        meta: this.buildAttendancePolicyMeta({
+          startAt: b.startAt,
+          actorRole,
+        }),
       });
 
       return updated;
@@ -859,6 +910,10 @@ export class BookingsService {
         toEndAt: updated.endAt,
         actorUserId: input.actorUserId,
         actorRole,
+        meta: this.buildAttendancePolicyMeta({
+          startAt: b.startAt,
+          actorRole,
+        }),
       });
 
       return updated;
