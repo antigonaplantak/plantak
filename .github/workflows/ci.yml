@@ -50,7 +50,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: ci_access_secret
       JWT_REFRESH_SECRET: ci_refresh_secret
-        AUTH_CODE_PEPPER: ci_magic_pepper
+      AUTH_CODE_PEPPER: ci_magic_pepper
       JWT_ACCESS_TTL_MIN: 15
       JWT_REFRESH_TTL_DAYS: 30
 
