@@ -101,9 +101,18 @@ jobs:
     name: Docker build (when Dockerfile exists)
     runs-on: ubuntu-latest
     needs: [verify]
-    if: ${{ hashFiles('apps/api/Dockerfile') != '' }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check Dockerfile
+        id: dockerfile
+        run: |
+          if [ -f apps/api/Dockerfile ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build api image
+        if: steps.dockerfile.outputs.exists == 'true'
         run: docker build -t plantak-api:ci -f apps/api/Dockerfile .
