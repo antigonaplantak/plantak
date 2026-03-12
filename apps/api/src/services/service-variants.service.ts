@@ -31,7 +31,7 @@ export class ServiceVariantsService {
       select: { role: true },
     });
     if (!member) throw new ForbiddenException('No business access');
-    if (!allowed.includes(member.role as any))
+    if (!allowed.includes(member.role))
       throw new ForbiddenException('Insufficient role');
   }
 
@@ -53,7 +53,7 @@ export class ServiceVariantsService {
         priceCents: dto.priceCents,
         bufferBeforeMin: dto.bufferBeforeMin ?? 0,
         bufferAfterMin: dto.bufferAfterMin ?? 0,
-        visibility: (dto.visibility as any) ?? 'PUBLIC',
+        visibility: dto.visibility ?? 'PUBLIC',
         onlineBookingEnabled: dto.onlineBookingEnabled ?? true,
         position: dto.position ?? 0,
       },
@@ -105,9 +105,7 @@ export class ServiceVariantsService {
         ...(dto.bufferAfterMin !== undefined
           ? { bufferAfterMin: dto.bufferAfterMin }
           : {}),
-        ...(dto.visibility !== undefined
-          ? { visibility: dto.visibility as any }
-          : {}),
+        ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
         ...(dto.onlineBookingEnabled !== undefined
           ? { onlineBookingEnabled: dto.onlineBookingEnabled }
           : {}),

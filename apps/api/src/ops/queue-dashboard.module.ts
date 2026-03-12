@@ -4,7 +4,13 @@ import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import { Queue } from 'bullmq';
-import type { NextFunction, Request, Response } from 'express';
+import type {
+  Express,
+  NextFunction,
+  Request,
+  RequestHandler,
+  Response,
+} from 'express';
 
 declare global {
   var __plantakQueueDashboardMounted: boolean | undefined;
@@ -42,7 +48,7 @@ export class QueueDashboardModule implements OnModuleInit, OnModuleDestroy {
 
   constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
 
-  async onModuleInit() {
+  onModuleInit() {
     if (!envBool('ENABLE_QUEUE_DASHBOARD', false)) {
       this.logger.log('queue dashboard disabled');
       return;
@@ -54,7 +60,7 @@ export class QueueDashboardModule implements OnModuleInit, OnModuleDestroy {
     }
 
     const http = this.httpAdapterHost.httpAdapter;
-    const app = http.getInstance();
+    const app = http.getInstance<Express>();
 
     if (!app?.use) {
       throw new Error('Queue dashboard requires the default Express adapter');
@@ -120,7 +126,8 @@ export class QueueDashboardModule implements OnModuleInit, OnModuleDestroy {
       next();
     };
 
-    app.use(route, auth, serverAdapter.getRouter());
+    const router = serverAdapter.getRouter() as RequestHandler;
+    app.use(route, auth, router);
     globalThis.__plantakQueueDashboardMounted = true;
 
     this.logger.log(`queue dashboard ready route=${route}`);

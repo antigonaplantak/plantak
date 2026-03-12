@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { RedisCacheService } from '../infra/redis-cache.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -11,6 +12,12 @@ import { CreateServiceCategoryDto } from '../service-categories/dto/create-servi
 import { UpdateServiceCategoryDto } from '../service-categories/dto/update-service-category.dto';
 import { SetServiceStatusDto } from './dto/set-service-status.dto';
 import { ReplaceStaffServicesDto } from './dto/replace-staff-services.dto';
+
+type PublicCategoryRow =
+  Prisma.ServiceCategoryGetPayload<Prisma.ServiceCategoryDefaultArgs>;
+type PublicServiceRow = Prisma.ServiceGetPayload<{
+  include: { category: true; variants: true; addons: true };
+}>;
 
 @Injectable()
 export class ServicesService {
@@ -98,7 +105,7 @@ export class ServicesService {
 
   async listPublicCategories(businessId: string) {
     const key = this.cache.key('public', 'service-categories', businessId);
-    const cached = await this.cache.getJson<any[]>(key);
+    const cached = await this.cache.getJson<PublicCategoryRow[]>(key);
     if (cached) return cached;
 
     const data = await this.prisma.serviceCategory.findMany({
@@ -172,7 +179,7 @@ export class ServicesService {
         currency: dto.currency ?? 'EUR',
         bufferBeforeMin: dto.bufferBeforeMin ?? 0,
         bufferAfterMin: dto.bufferAfterMin ?? 0,
-        visibility: (dto.visibility as any) ?? 'PUBLIC',
+        visibility: dto.visibility ?? 'PUBLIC',
         onlineBookingEnabled: dto.onlineBookingEnabled ?? true,
         isPinned: dto.isPinned ?? false,
         position: dto.position ?? 0,
@@ -212,7 +219,7 @@ export class ServicesService {
 
   async listPublicServices(businessId: string) {
     const key = this.cache.key('public', 'services', businessId);
-    const cached = await this.cache.getJson<any[]>(key);
+    const cached = await this.cache.getJson<PublicServiceRow[]>(key);
     if (cached) return cached;
 
     const data = await this.prisma.service.findMany({
@@ -323,9 +330,7 @@ export class ServicesService {
         ...(dto.bufferAfterMin !== undefined
           ? { bufferAfterMin: dto.bufferAfterMin }
           : {}),
-        ...(dto.visibility !== undefined
-          ? { visibility: dto.visibility as any }
-          : {}),
+        ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
         ...(dto.onlineBookingEnabled !== undefined
           ? { onlineBookingEnabled: dto.onlineBookingEnabled }
           : {}),
@@ -351,9 +356,7 @@ export class ServicesService {
     const updated = await this.prisma.service.update({
       where: { id: serviceId },
       data: {
-        ...(dto.visibility !== undefined
-          ? { visibility: dto.visibility as any }
-          : {}),
+        ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
         ...(dto.onlineBookingEnabled !== undefined
           ? { onlineBookingEnabled: dto.onlineBookingEnabled }
           : {}),
