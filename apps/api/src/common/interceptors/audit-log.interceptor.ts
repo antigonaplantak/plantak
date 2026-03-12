@@ -12,7 +12,10 @@ import { AUDIT_KEY } from '../audit/audit.decorator';
 // ⚠️ This import will be auto-patched to your real PrismaService path below.
 import { PrismaService } from '../../prisma/prisma.service';
 
-type AuthedRequest = Request & { user?: { id: string }; id?: string };
+type AuthedRequest = Request & {
+  user?: { id?: string; sub?: string; role?: string };
+  id?: string;
+};
 
 function firstString(v: unknown): string | null {
   if (typeof v === 'string' && v.length > 0) return v;
@@ -32,11 +35,19 @@ export class AuditLogInterceptor implements NestInterceptor {
     const action = this.reflector.get<string>(AUDIT_KEY, context.getHandler());
     if (!action) return next.handle();
 
-    const actorUserId = req.user?.id ?? null;
+    const actorUserId = req.user?.sub ?? req.user?.id ?? null;
+    const actorRole =
+      typeof req.user?.role === 'string' && req.user.role.length > 0
+        ? req.user.role.toUpperCase()
+        : null;
+
 
     const q = req.query as unknown as Record<string, unknown>;
+    const body = (req.body ?? {}) as Record<string, unknown>;
     const businessId =
-      firstString(q?.businessId) ?? firstString(req.headers['x-business-id']);
+      firstString(body?.businessId) ??
+      firstString(q?.businessId) ??
+      firstString(req.headers['x-business-id']);
 
     const requestId = req.id ?? null;
     const ip = typeof req.ip === 'string' ? req.ip : null;
@@ -53,6 +64,7 @@ export class AuditLogInterceptor implements NestInterceptor {
             entityType: action,
             entityId: requestId ?? 'unknown',
             actorUserId,
+            actorRole,
             businessId,
             requestId,
             ip,

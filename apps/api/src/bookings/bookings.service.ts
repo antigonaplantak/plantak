@@ -12,7 +12,7 @@ import { AppRole } from '../common/auth/roles.decorator';
 import { Prisma } from '@prisma/client';
 import { parseStartToUtc } from '../common/time/time.util';
 import { normalizeAddonIds } from '../availability/addon-ids.util';
-type ActorRole = AppRole;
+type ActorRole = AppRole | 'OWNER' | 'ADMIN';
 
 function isBusinessOperator(role: ActorRole) {
   return role === 'OWNER' || role === 'ADMIN' || role === 'STAFF';
@@ -98,6 +98,69 @@ export class BookingsService {
     }
   }
 
+  private async resolveBusinessActorRole(
+    tx: Prisma.TransactionClient,
+    businessId: string,
+    actorUserId: string,
+    fallbackRole: ActorRole = 'CUSTOMER',
+  ): Promise<ActorRole> {
+    const membership = await tx.businessMember.findUnique({
+      where: {
+        businessId_userId: {
+          businessId,
+          userId: actorUserId,
+        },
+      },
+      select: { role: true },
+    });
+
+    if (
+      membership?.role === 'OWNER' ||
+      membership?.role === 'ADMIN' ||
+      membership?.role === 'STAFF'
+    ) {
+      return membership.role;
+    }
+
+    return fallbackRole;
+  }
+
+  private writeBookingHistory(
+    tx: Prisma.TransactionClient,
+    input: {
+      bookingId: string;
+      businessId: string;
+      staffId?: string | null;
+      customerId?: string | null;
+      action: string;
+      status?: string | null;
+      fromStartAt?: Date | null;
+      fromEndAt?: Date | null;
+      toStartAt?: Date | null;
+      toEndAt?: Date | null;
+      actorUserId?: string | null;
+      actorRole?: string | null;
+      meta?: Prisma.InputJsonValue | null;
+    },
+  ) {
+    return tx.bookingHistory.create({
+      data: {
+        bookingId: input.bookingId,
+        businessId: input.businessId,
+        staffId: input.staffId ?? null,
+        customerId: input.customerId ?? null,
+        action: input.action,
+        status: input.status ?? null,
+        fromStartAt: input.fromStartAt ?? null,
+        fromEndAt: input.fromEndAt ?? null,
+        toStartAt: input.toStartAt ?? null,
+        toEndAt: input.toEndAt ?? null,
+        actorUserId: input.actorUserId ?? null,
+        actorRole: input.actorRole ?? null,
+        meta: input.meta ?? Prisma.JsonNull,
+      },
+    });
+  }
 
   private idemGet(businessId: string, key?: string) {
     if (!key) return null;
@@ -217,7 +280,8 @@ export class BookingsService {
     const end = new Date(start.getTime() + profile.totalMin * 60_000);
 
     try {
-      const created = await this.prisma.booking.create({
+      const created = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.booking.create({
         data: {
           businessId: input.businessId,
           customerId: input.customerId,
@@ -264,6 +328,28 @@ export class BookingsService {
           createdAt: true,
         },
       });
+
+        await this.writeBookingHistory(tx, {
+          bookingId: created.id,
+          businessId: created.businessId,
+          staffId: created.staffId,
+          customerId: created.customerId,
+          action: 'CREATE',
+          status: created.status,
+          toStartAt: created.startAt,
+          toEndAt: created.endAt,
+          actorUserId: input.actorUserId,
+          actorRole: input.actorRole,
+          meta: {
+            serviceId: created.serviceId,
+            serviceVariantId: created.serviceVariantId,
+            addonIdsSnapshot: created.addonIdsSnapshot,
+          } as Prisma.InputJsonValue,
+        });
+
+        return created;
+      });
+
       if (input.idempotencyKey) {
         await this.idemSave({
           businessId: input.businessId,
@@ -336,6 +422,8 @@ export class BookingsService {
           staffId: true,
           customerId: true,
           status: true,
+          startAt: true,
+          endAt: true,
           totalMinSnapshot: true,
         },
       });
@@ -343,7 +431,14 @@ export class BookingsService {
       if (!booking)
         throw new BadRequestException('Booking not found or not reschedulable');
 
-      const operator = isBusinessOperator(input.actorRole);
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      const operator = isBusinessOperator(actorRole);
       const isOwnCustomerBooking = booking.customerId === input.actorUserId;
       if (!operator && !isOwnCustomerBooking) {
         throw new ForbiddenException('Not allowed to reschedule this booking');
@@ -385,6 +480,21 @@ export class BookingsService {
             status: true,
             updatedAt: true,
           },
+        });
+
+        await this.writeBookingHistory(tx, {
+          bookingId: updated.id,
+          businessId: updated.businessId,
+          staffId: updated.staffId,
+          customerId: updated.customerId,
+          action: 'RESCHEDULE',
+          status: updated.status,
+          fromStartAt: booking.startAt,
+          fromEndAt: booking.endAt,
+          toStartAt: updated.startAt,
+          toEndAt: updated.endAt,
+          actorUserId: input.actorUserId,
+          actorRole,
         });
 
         if (input.idempotencyKey) {
@@ -528,11 +638,26 @@ export class BookingsService {
     const res = await this.prisma.$transaction(async (tx) => {
       const b = await tx.booking.findFirst({
         where: { id: input.bookingId, businessId: input.businessId },
-        select: { id: true, customerId: true, status: true },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          startAt: true,
+          endAt: true,
+        },
       });
       if (!b) throw new BadRequestException('Booking not found');
 
-      const operator = isBusinessOperator(input.actorRole);
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      const operator = isBusinessOperator(actorRole);
       if (!operator && b.customerId !== input.actorUserId) {
         throw new ForbiddenException('Not allowed to cancel this booking');
       }
@@ -544,7 +669,7 @@ export class BookingsService {
         throw new BadRequestException('Booking not cancelable');
       }
 
-      return tx.booking.update({
+      const updated = await tx.booking.update({
         where: { id: b.id },
         data: { status: 'CANCELLED' },
         select: {
@@ -560,6 +685,23 @@ export class BookingsService {
           updatedAt: true,
         },
       });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        staffId: updated.staffId,
+        customerId: updated.customerId,
+        action: 'CANCEL',
+        status: updated.status,
+        fromStartAt: b.startAt,
+        fromEndAt: b.endAt,
+        toStartAt: updated.startAt,
+        toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+      });
+
+      return updated;
     });
 
     if (input.idempotencyKey) {
@@ -607,11 +749,26 @@ export class BookingsService {
     const res = await this.prisma.$transaction(async (tx) => {
       const b = await tx.booking.findFirst({
         where: { id: input.bookingId, businessId: input.businessId },
-        select: { id: true, customerId: true, status: true },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          startAt: true,
+          endAt: true,
+        },
       });
       if (!b) throw new BadRequestException('Booking not found');
 
-      const operator = isBusinessOperator(input.actorRole);
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      const operator = isBusinessOperator(actorRole);
       if (!operator && b.customerId !== input.actorUserId) {
         throw new ForbiddenException('Not allowed to confirm this booking');
       }
@@ -622,7 +779,7 @@ export class BookingsService {
       if (b.status !== 'PENDING')
         throw new BadRequestException('Booking not confirmable');
 
-      return tx.booking.update({
+      const updated = await tx.booking.update({
         where: { id: b.id },
         data: { status: 'CONFIRMED' },
         select: {
@@ -638,6 +795,23 @@ export class BookingsService {
           updatedAt: true,
         },
       });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        staffId: updated.staffId,
+        customerId: updated.customerId,
+        action: 'CONFIRM',
+        status: updated.status,
+        fromStartAt: b.startAt,
+        fromEndAt: b.endAt,
+        toStartAt: updated.startAt,
+        toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+      });
+
+      return updated;
     });
 
     if (input.idempotencyKey) {

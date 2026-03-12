@@ -14,9 +14,16 @@ import { BusinessRolesGuard } from '../common/auth/business-roles.guard';
 type ReqUser = { sub: string; email: string; role?: string };
 type ReqWithUser = Request & { user?: ReqUser };
 
-function actorRoleFromJwt(req: ReqWithUser): 'STAFF' | 'CUSTOMER' {
-  const r = String(req.user?.role ?? 'CUSTOMER');
-  return r === 'STAFF' ? 'STAFF' : 'CUSTOMER';
+function actorRoleFromJwt(
+  req: ReqWithUser,
+): 'OWNER' | 'ADMIN' | 'STAFF' | 'CUSTOMER' {
+  const r = String(req.user?.role ?? 'CUSTOMER').toUpperCase();
+
+  if (r === 'OWNER' || r === 'ADMIN' || r === 'STAFF') {
+    return r;
+  }
+
+  return 'CUSTOMER';
 }
 
 @ApiTags('Bookings')
