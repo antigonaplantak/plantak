@@ -870,7 +870,7 @@ export class BookingsService {
       );
 
       const operator = isBusinessOperator(actorRole);
-      if (!operator && b.customerId !== input.actorUserId) {
+      if (!operator) {
         throw new ForbiddenException('Not allowed to confirm this booking');
       }
 
