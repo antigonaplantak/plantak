@@ -162,6 +162,44 @@ export class BookingsService {
     });
   }
 
+  private getCustomerNoticeMinutes(
+    action: 'cancel' | 'reschedule',
+  ): number {
+    const envName =
+      action === 'cancel'
+        ? 'BOOKING_CUSTOMER_CANCEL_NOTICE_MINUTES'
+        : 'BOOKING_CUSTOMER_RESCHEDULE_NOTICE_MINUTES';
+
+    const raw = process.env[envName];
+    const parsed = Number(raw);
+
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.floor(parsed);
+    }
+
+    return 24 * 60;
+  }
+
+  private enforceCustomerNoticeWindow(input: {
+    action: 'cancel' | 'reschedule';
+    actorRole: ActorRole;
+    startAt: Date;
+  }) {
+    if (isBusinessOperator(input.actorRole)) return;
+
+    const requiredMinutes = this.getCustomerNoticeMinutes(input.action);
+    if (requiredMinutes <= 0) return;
+
+    const diffMs = input.startAt.getTime() - Date.now();
+    if (diffMs >= requiredMinutes * 60_000) return;
+
+    if (input.action === 'cancel') {
+      throw new BadRequestException('Cancellation window has passed');
+    }
+
+    throw new BadRequestException('Reschedule window has passed');
+  }
+
   private idemGet(businessId: string, key?: string) {
     if (!key) return null;
     return this.prisma.idempotencyKey.findUnique({
@@ -444,6 +482,12 @@ export class BookingsService {
         throw new ForbiddenException('Not allowed to reschedule this booking');
       }
 
+      this.enforceCustomerNoticeWindow({
+        action: 'reschedule',
+        actorRole,
+        startAt: booking.startAt,
+      });
+
       const totalMin =
         booking.totalMinSnapshot ??
         (await this.resolveLegacyTotalMin(tx, {
@@ -668,6 +712,12 @@ export class BookingsService {
       if (b.status !== 'PENDING' && b.status !== 'CONFIRMED') {
         throw new BadRequestException('Booking not cancelable');
       }
+
+      this.enforceCustomerNoticeWindow({
+        action: 'cancel',
+        actorRole,
+        startAt: b.startAt,
+      });
 
       const updated = await tx.booking.update({
         where: { id: b.id },
