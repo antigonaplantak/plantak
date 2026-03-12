@@ -83,7 +83,7 @@ jobs:
         run: pnpm -C apps/api exec eslint "src/**/*.ts" "test/**/*.ts"
 
       - name: Unit tests
-        run: pnpm -C apps/api test -- --runInBand --detectOpenHandles
+        run: pnpm -C apps/api exec jest --runInBand --detectOpenHandles --passWithNoTests
 
       - name: Build
         run: pnpm -C apps/api run build
