@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd ~/code/plantak/apps/api
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$APP_DIR"
 
 PORT="${BOOKING_GATE_PORT:-3101}"
 API_BASE="http://localhost:${PORT}"
@@ -19,7 +21,7 @@ echo
 echo "== RESTART =="
 (lsof -ti :"${PORT}" | xargs -r kill -9 || true)
 : > /tmp/plantak_api.log
-nohup bash -lc "cd ~/code/plantak/apps/api && exec env PORT=${PORT} THROTTLE_BYPASS_TOKEN=${THROTTLE_BYPASS_TOKEN:-} node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
+nohup bash -lc "cd \"$APP_DIR\" && exec env PORT=${PORT} THROTTLE_BYPASS_TOKEN=${THROTTLE_BYPASS_TOKEN:-} node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
 sleep 6
 
 echo
