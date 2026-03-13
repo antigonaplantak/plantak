@@ -1309,4 +1309,134 @@ export class BookingsService {
     return res;
   }
 
+
+
+  async expirePendingDeposit(input: {
+    businessId: string;
+    bookingId: string;
+    actorUserId: string;
+    actorRole: ActorRole;
+    idempotencyKey?: string;
+  }) {
+    const requestHash = JSON.stringify({
+      businessId: input.businessId,
+      bookingId: input.bookingId,
+      action: 'deposit-expire',
+    });
+
+    if (input.idempotencyKey) {
+      const existing = await this.idemGet(
+        input.businessId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key reused with different request',
+          );
+        }
+        return existing.response;
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const b = await tx.booking.findFirst({
+        where: { id: input.bookingId, businessId: input.businessId },
+        select: {
+          id: true,
+          businessId: true,
+          serviceId: true,
+          staffId: true,
+          customerId: true,
+          locationId: true,
+          status: true,
+          paymentStatus: true,
+          depositExpiresAt: true,
+          amountDepositCentsSnapshot: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      if (!b) throw new BadRequestException('Booking not found');
+
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      if (!isBusinessOperator(actorRole)) {
+        throw new ForbiddenException(
+          'Not allowed to expire deposit hold for this booking',
+        );
+      }
+
+      if ((b.amountDepositCentsSnapshot ?? 0) <= 0) {
+        throw new BadRequestException('Booking has no deposit requirement');
+      }
+
+      if (b.status !== 'PENDING' || b.paymentStatus !== 'DEPOSIT_PENDING') {
+        throw new BadRequestException('Booking deposit is not pending');
+      }
+
+      if (!b.depositExpiresAt || b.depositExpiresAt.getTime() > Date.now()) {
+        throw new ConflictException('Deposit hold not expired');
+      }
+
+      const updated = await tx.booking.update({
+        where: { id: b.id },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: 'NONE',
+          depositExpiresAt: null,
+        },
+        select: {
+          id: true,
+          businessId: true,
+          serviceId: true,
+          staffId: true,
+          customerId: true,
+          locationId: true,
+          status: true,
+          paymentStatus: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        staffId: updated.staffId,
+        customerId: updated.customerId,
+        action: 'CANCEL',
+        status: updated.status,
+        toStartAt: updated.startAt,
+        toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          depositExpired: true,
+        } as Prisma.InputJsonValue,
+      });
+
+      return updated;
+    });
+
+    if (input.idempotencyKey) {
+      await this.idemSave({
+        businessId: input.businessId,
+        key: input.idempotencyKey,
+        action: 'deposit-expire',
+        requestHash,
+        response: updated,
+      });
+    }
+
+    await this.invalidateAvailabilityCacheForBooking(updated);
+    return updated;
+  }
+
 }

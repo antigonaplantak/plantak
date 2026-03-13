@@ -228,4 +228,25 @@ export class BookingsController {
     });
   }
 
+
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post(':id/deposit-expire')
+  async expirePendingDeposit(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: BookingActionDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const actorRole = actorRoleFromJwt(req);
+    return this.bookings.expirePendingDeposit({
+      businessId: dto.businessId,
+      bookingId: id,
+      actorUserId,
+      actorRole,
+      idempotencyKey: dto.idempotencyKey,
+    });
+  }
+
 }
