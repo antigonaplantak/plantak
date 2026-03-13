@@ -9,7 +9,6 @@ import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RedisCacheService } from '../infra/redis-cache.service';
 import { AvailabilityService } from './availability.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
-import { normalizeAddonIds } from './addon-ids.util';
 
 type AvailabilityResponse = Awaited<
   ReturnType<AvailabilityService['getAvailability']>
@@ -60,7 +59,7 @@ export class AvailabilityController {
     }),
   )
   async getAvailability(@Query() q: AvailabilityQueryDto) {
-    const addonIds = normalizeAddonIds(q.addonIds);
+    const addonIds = q.addonIds ?? [];
     const addonIdsKey = addonIds.join(',');
 
     const cacheKey = this.cache.key(

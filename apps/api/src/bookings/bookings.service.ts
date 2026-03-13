@@ -5,7 +5,6 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DateTime } from 'luxon';
 import { RedisCacheService } from '../infra/redis-cache.service';
 import { ServiceProfileService } from '../services/service-profile.service';
 import { AppRole } from '../common/auth/roles.decorator';
@@ -49,52 +48,20 @@ export class BookingsService {
     private readonly serviceProfiles: ServiceProfileService,
   ) {}
 
-  private async invalidateAvailabilityCacheForBooking(
-    booking: {
-      businessId?: string;
-      serviceId?: string;
-      staffId?: string;
-      startAt?: Date | string | null;
-    },
-    tz = 'UTC',
-  ) {
+  private async invalidateAvailabilityCacheForBooking(booking: {
+    businessId?: string;
+    serviceId?: string;
+  }) {
     try {
-      if (
-        booking?.businessId &&
-        booking?.serviceId &&
-        booking?.staffId &&
-        booking?.startAt
-      ) {
-        const start =
-          booking.startAt instanceof Date
-            ? booking.startAt
-            : new Date(booking.startAt);
-
-        const date = DateTime.fromJSDate(start, { zone: 'utc' })
-          .setZone(tz)
-          .toFormat('yyyy-LL-dd');
-
-        const keyWithTz = this.cache.key(
-          'availability',
-          `businessId=${booking.businessId}`,
-          `serviceId=${booking.serviceId}`,
-          `date=${date}`,
-          `staffId=${booking.staffId}`,
-          'intervalMin=',
-          `tz=${tz}`,
+      if (booking?.businessId && booking?.serviceId) {
+        await this.cache.delByPrefix(
+          this.cache.key(
+            'availability',
+            `businessId=${booking.businessId}`,
+            `serviceId=${booking.serviceId}`,
+          ),
         );
-
-        const keyNoTz = this.cache.key(
-          'availability',
-          `businessId=${booking.businessId}`,
-          `serviceId=${booking.serviceId}`,
-          `date=${date}`,
-          `staffId=${booking.staffId}`,
-          'intervalMin=',
-          'tz=',
-        );
-
-        await this.cache.delKeys(keyWithTz, keyNoTz);
+        return;
       }
 
       await this.cache.delByPrefix(this.cache.key('availability'));
@@ -870,7 +837,10 @@ export class BookingsService {
       });
     }
 
-    await this.cache.delByPrefix(this.cache.key('availability'));
+    await this.invalidateAvailabilityCacheForBooking({
+      businessId: input.businessId,
+      serviceId: 'serviceId' in res ? res.serviceId : undefined,
+    });
     return res;
   }
 
@@ -984,7 +954,10 @@ export class BookingsService {
       });
     }
 
-    await this.cache.delByPrefix(this.cache.key('availability'));
+    await this.invalidateAvailabilityCacheForBooking({
+      businessId: input.businessId,
+      serviceId: 'serviceId' in res ? res.serviceId : undefined,
+    });
     return res;
   }
 
