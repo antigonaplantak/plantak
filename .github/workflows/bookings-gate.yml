@@ -25,7 +25,6 @@ jobs:
       postgres:
         image: postgres:16
         env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           POSTGRES_USER: app
           POSTGRES_PASSWORD: app
           POSTGRES_DB: plantak
@@ -48,6 +47,7 @@ jobs:
           --health-retries=30
 
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NODE_ENV: test
       PORT: 3001
       DATABASE_URL: postgresql://app:app@localhost:5432/plantak?schema=public
