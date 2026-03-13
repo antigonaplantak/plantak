@@ -13,7 +13,7 @@ npm run build
 
 (lsof -ti :3001 | xargs -r kill -9 || true)
 : > /tmp/plantak_api.log
-nohup bash -lc "cd \"$APP_DIR\" && set -a && [ -f .env ] && . ./.env && set +a && exec node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
+nohup bash -lc "cd \"$APP_DIR\" && if [ -f .env ]; then set -a; . ./.env; set +a; fi; exec node dist/main" >/tmp/plantak_api.log 2>&1 < /dev/null &
 sleep 6
 
 echo "== HEALTH =="
