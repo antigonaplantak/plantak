@@ -495,6 +495,9 @@ export class BookingsService {
           staffId: true,
           customerId: true,
           status: true,
+          paymentStatus: true,
+          depositExpiresAt: true,
+          amountDepositCentsSnapshot: true,
           startAt: true,
           endAt: true,
           totalMinSnapshot: true,
@@ -779,6 +782,9 @@ export class BookingsService {
           staffId: true,
           customerId: true,
           status: true,
+          paymentStatus: true,
+          depositExpiresAt: true,
+          amountDepositCentsSnapshot: true,
           startAt: true,
           endAt: true,
         },
@@ -903,6 +909,9 @@ export class BookingsService {
           staffId: true,
           customerId: true,
           status: true,
+          paymentStatus: true,
+          depositExpiresAt: true,
+          amountDepositCentsSnapshot: true,
           startAt: true,
           endAt: true,
         },
@@ -926,6 +935,22 @@ export class BookingsService {
 
       if (b.status !== 'PENDING')
         throw new BadRequestException('Booking not confirmable');
+
+      if (
+        b.paymentStatus === 'DEPOSIT_PENDING' &&
+        (b.amountDepositCentsSnapshot ?? 0) > 0
+      ) {
+        if (
+          b.depositExpiresAt &&
+          b.depositExpiresAt.getTime() <= Date.now()
+        ) {
+          throw new ConflictException('Deposit hold expired');
+        }
+
+        throw new ConflictException(
+          'Deposit payment required before confirmation',
+        );
+      }
 
       const updated = await tx.booking.update({
         where: { id: b.id },
