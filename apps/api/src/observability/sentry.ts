@@ -1,5 +1,4 @@
 import * as Sentry from '@sentry/node';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 export function initSentry() {
   const dsn = process.env.SENTRY_DSN;
@@ -7,9 +6,12 @@ export function initSentry() {
 
   Sentry.init({
     dsn,
-    integrations: [nodeProfilingIntegration()],
+    environment: process.env.NODE_ENV || 'development',
     tracesSampleRate: 0.1,
-    profilesSampleRate: 0.0,
-    environment: process.env.NODE_ENV ?? 'development',
   });
+}
+
+export function captureException(err: unknown) {
+  if (!process.env.SENTRY_DSN) return;
+  Sentry.captureException(err);
 }

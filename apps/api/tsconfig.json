@@ -21,5 +21,12 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "exclude": [
+    "_baseline_safe_snapshot",
+    "_final_working_snapshot",
+    "_pre_change_backups",
+    "_backup*",
+    "scripts"
+  ]
 }

@@ -1,0 +1,12 @@
+{
+  "app": {
+    "title": "Plantak",
+    "dashboard": "Paneli"
+  },
+  "nav": {
+    "calendar": "Kalendari",
+    "bookings": "Rezervimet",
+    "services": "Shërbimet",
+    "staff": "Stafi"
+  }
+}

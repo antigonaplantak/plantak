@@ -1,0 +1,95 @@
+name: bookings-gate
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/bookings-gate.yml"
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - freeze/**
+    paths:
+      - "apps/api/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/bookings-gate.yml"
+
+jobs:
+  bookings-gate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: plantak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U app -d plantak"
+          --health-interval=2s
+          --health-timeout=3s
+          --health-retries=30
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=2s
+          --health-timeout=3s
+          --health-retries=30
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgresql://app:app@localhost:5432/plantak?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci_access_secret
+      JWT_REFRESH_SECRET: ci_refresh_secret
+      AUTH_CODE_PEPPER: ci_magic_pepper
+      JWT_ACCESS_TTL_MIN: 15
+      JWT_REFRESH_TTL_DAYS: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm via Corepack
+        run: |
+          npm install --global corepack@latest
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+          pnpm --version
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm -C apps/api exec prisma generate
+
+      - name: Prisma migrate deploy
+        run: pnpm -C apps/api exec prisma migrate deploy
+
+      - name: Shell checks
+        run: pnpm -C apps/api run check:shell
+
+      - name: Build
+        run: pnpm -C apps/api run build
+
+      - name: Booking gate
+        run: pnpm -C apps/api run gate:bookings
