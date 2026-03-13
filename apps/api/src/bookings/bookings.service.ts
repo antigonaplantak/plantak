@@ -1435,7 +1435,7 @@ export class BookingsService {
       });
     }
 
-    await this.invalidateAvailabilityCacheForBooking(updated);
+    await this.cache.delByPrefix(this.cache.key('availability'));
     return updated;
   }
 
