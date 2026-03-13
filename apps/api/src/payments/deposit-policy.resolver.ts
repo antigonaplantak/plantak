@@ -29,7 +29,7 @@ export function resolveDepositPolicy(
   let resolvedPercent: number | null = null;
   let resolvedFrom: DepositResolvedFrom = 'none';
 
-  if (input.businessScopeMode === 'ALL_SERVICES' && businessPercent !== null) {
+  if (input.serviceUseBusinessDepositDefault && businessPercent !== null) {
     resolvedPercent = businessPercent;
     resolvedFrom = 'business_default';
   }
@@ -39,7 +39,7 @@ export function resolveDepositPolicy(
     resolvedFrom = servicePercent === null ? 'none' : 'service_override';
   }
 
-  if (input.staffScopeMode === 'ALL_SERVICES' && staffPercent !== null) {
+  if (input.serviceStaffUseStaffDepositDefault !== false && staffPercent !== null) {
     resolvedPercent = staffPercent;
     resolvedFrom = 'staff_default';
   }

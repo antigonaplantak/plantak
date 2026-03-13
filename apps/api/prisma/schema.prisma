@@ -21,6 +21,30 @@ enum BookingStatus {
   NO_SHOW
 }
 
+enum DepositResolvedFromScope {
+  NONE
+  BUSINESS_DEFAULT
+  SERVICE_OVERRIDE
+  STAFF_DEFAULT
+  STAFF_SERVICE_OVERRIDE
+}
+
+enum BookingPaymentStatus {
+  NONE
+  DEPOSIT_PENDING
+  DEPOSIT_PAID
+  REMAINING_DUE_IN_SALON
+  PAID
+  DEPOSIT_WAIVED
+  DEPOSIT_FORFEITED
+  REFUNDED
+}
+
+enum DepositServiceScopeMode {
+  ALL_SERVICES
+  SELECTED_SERVICES
+}
+
 model User {
   businessMemberships BusinessMember[]
 
@@ -46,6 +70,8 @@ model Business {
   id        String   @id @default(uuid())
   name      String
   timezone  String   @default("Europe/Paris")
+  depositPercentDefault Int?
+  depositScopeMode      DepositServiceScopeMode @default(ALL_SERVICES)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -93,6 +119,8 @@ model Service {
   bufferAfterMin  Int     @default(0)
   priceCents      Int
   currency        String  @default("EUR")
+  depositPercent            Int?
+  useBusinessDepositDefault Boolean @default(true)
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -130,6 +158,8 @@ model Staff {
   id          String   @id @default(uuid())
   displayName String?
   businessId  String
+  depositPercentDefault Int?
+  depositScopeMode      DepositServiceScopeMode @default(SELECTED_SERVICES)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -157,6 +187,8 @@ model ServiceStaff {
   priceCentsOverride      Int?
   bufferBeforeMinOverride Int?
   bufferAfterMinOverride  Int?
+  depositPercent         Int?
+  useStaffDepositDefault Boolean @default(true)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
   Service                 Service  @relation(fields: [serviceId], references: [id])
@@ -214,6 +246,13 @@ model Booking {
   priceCentsSnapshot         Int?
   currencySnapshot           String?
   totalMinSnapshot           Int?
+  amountDepositCentsSnapshot   Int?
+  amountRemainingCentsSnapshot Int?
+  amountTotalCentsSnapshot     Int?
+  depositExpiresAt             DateTime?
+  depositPercentSnapshot       Int?
+  depositResolvedFromScope     DepositResolvedFromScope @default(NONE)
+  paymentStatus                BookingPaymentStatus @default(NONE)
   startAt                    DateTime
   endAt                      DateTime
   status                     BookingStatus @default(PENDING)

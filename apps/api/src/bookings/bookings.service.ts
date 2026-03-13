@@ -11,6 +11,8 @@ import { AppRole } from '../common/auth/roles.decorator';
 import { Prisma } from '@prisma/client';
 import { parseStartToUtc } from '../common/time/time.util';
 import { normalizeAddonIds } from '../availability/addon-ids.util';
+import { buildDepositExpiryDate } from '../payments/deposit-expiry.util';
+import { toPrismaDepositResolvedFromScope } from '../payments/deposit-prisma-mapper.util';
 type ActorRole = AppRole | 'OWNER' | 'ADMIN';
 
 function isBusinessOperator(role: ActorRole) {
@@ -329,6 +331,10 @@ export class BookingsService {
     });
 
     const end = new Date(start.getTime() + profile.totalMin * 60_000);
+    const depositExpiresAt =
+      profile.amountDepositCents > 0 ? buildDepositExpiryDate() : null;
+    const paymentStatus =
+      profile.amountDepositCents > 0 ? 'DEPOSIT_PENDING' : 'NONE';
 
     try {
       const created = await this.prisma.$transaction(async (tx) => {
@@ -349,6 +355,15 @@ export class BookingsService {
             priceCentsSnapshot: profile.priceCents,
             currencySnapshot: profile.currency,
             totalMinSnapshot: profile.totalMin,
+            amountTotalCentsSnapshot: profile.amountTotalCents,
+            amountDepositCentsSnapshot: profile.amountDepositCents,
+            amountRemainingCentsSnapshot: profile.amountRemainingCents,
+            depositPercentSnapshot: profile.depositPercent,
+            depositResolvedFromScope: toPrismaDepositResolvedFromScope(
+              profile.depositResolvedFrom,
+            ),
+            paymentStatus,
+            depositExpiresAt,
             locationId: input.locationId ?? null,
             startAt: start,
             endAt: end,
@@ -371,6 +386,13 @@ export class BookingsService {
             priceCentsSnapshot: true,
             currencySnapshot: true,
             totalMinSnapshot: true,
+            amountTotalCentsSnapshot: true,
+            amountDepositCentsSnapshot: true,
+            amountRemainingCentsSnapshot: true,
+            depositPercentSnapshot: true,
+            depositResolvedFromScope: true,
+            paymentStatus: true,
+            depositExpiresAt: true,
             customerId: true,
             locationId: true,
             startAt: true,
