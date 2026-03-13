@@ -29,17 +29,29 @@ export function resolveDepositPolicy(
   let resolvedPercent: number | null = null;
   let resolvedFrom: DepositResolvedFrom = 'none';
 
-  if (input.serviceUseBusinessDepositDefault && businessPercent !== null) {
+  const businessDefaultApplies =
+    businessPercent !== null &&
+    (input.businessScopeMode === 'ALL_SERVICES' ||
+      (input.businessScopeMode === 'SELECTED_SERVICES' &&
+        input.serviceUseBusinessDepositDefault === true));
+
+  if (businessDefaultApplies) {
     resolvedPercent = businessPercent;
     resolvedFrom = 'business_default';
   }
 
-  if (!input.serviceUseBusinessDepositDefault) {
+  if (input.serviceUseBusinessDepositDefault === false) {
     resolvedPercent = servicePercent;
     resolvedFrom = servicePercent === null ? 'none' : 'service_override';
   }
 
-  if (input.serviceStaffUseStaffDepositDefault !== false && staffPercent !== null) {
+  const staffDefaultApplies =
+    staffPercent !== null &&
+    (input.staffScopeMode === 'ALL_SERVICES' ||
+      (input.staffScopeMode === 'SELECTED_SERVICES' &&
+        input.serviceStaffUseStaffDepositDefault === true));
+
+  if (staffDefaultApplies) {
     resolvedPercent = staffPercent;
     resolvedFrom = 'staff_default';
   }

@@ -22,11 +22,11 @@ ADD COLUMN     "depositScopeMode" "DepositServiceScopeMode" NOT NULL DEFAULT 'AL
 
 -- AlterTable
 ALTER TABLE "Service" ADD COLUMN     "depositPercent" INTEGER,
-ADD COLUMN     "useBusinessDepositDefault" BOOLEAN NOT NULL DEFAULT true;
+ADD COLUMN     "useBusinessDepositDefault" BOOLEAN NOT NULL DEFAULT false;
 
 -- AlterTable
 ALTER TABLE "ServiceStaff" ADD COLUMN     "depositPercent" INTEGER,
-ADD COLUMN     "useStaffDepositDefault" BOOLEAN NOT NULL DEFAULT true;
+ADD COLUMN     "useStaffDepositDefault" BOOLEAN NOT NULL DEFAULT false;
 
 -- AlterTable
 ALTER TABLE "Staff" ADD COLUMN     "depositPercentDefault" INTEGER,

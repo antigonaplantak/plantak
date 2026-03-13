@@ -120,7 +120,7 @@ model Service {
   priceCents      Int
   currency        String  @default("EUR")
   depositPercent            Int?
-  useBusinessDepositDefault Boolean @default(true)
+  useBusinessDepositDefault Boolean @default(false)
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -188,7 +188,7 @@ model ServiceStaff {
   bufferBeforeMinOverride Int?
   bufferAfterMinOverride  Int?
   depositPercent         Int?
-  useStaffDepositDefault Boolean @default(true)
+  useStaffDepositDefault Boolean @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
   Service                 Service  @relation(fields: [serviceId], references: [id])
