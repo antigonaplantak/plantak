@@ -207,4 +207,25 @@ export class BookingsController {
       idempotencyKey: dto.idempotencyKey,
     });
   }
+
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post(':id/deposit-paid')
+  async markDepositPaid(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: BookingActionDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const actorRole = actorRoleFromJwt(req);
+    return this.bookings.markDepositPaid({
+      businessId: dto.businessId,
+      bookingId: id,
+      actorUserId,
+      actorRole,
+      idempotencyKey: dto.idempotencyKey,
+    });
+  }
+
 }

@@ -1161,4 +1161,152 @@ export class BookingsService {
       nextCursor,
     };
   }
+
+
+  async markDepositPaid(input: {
+    businessId: string;
+    bookingId: string;
+    actorUserId: string;
+    actorRole: ActorRole;
+    idempotencyKey?: string;
+  }) {
+    const requestHash = JSON.stringify({
+      businessId: input.businessId,
+      bookingId: input.bookingId,
+      action: 'deposit-paid',
+    });
+
+    if (input.idempotencyKey) {
+      const existing = await this.idemGet(
+        input.businessId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key reused with different request',
+          );
+        }
+        return existing.response;
+      }
+    }
+
+    const res = await this.prisma.$transaction(async (tx) => {
+      const b = await tx.booking.findFirst({
+        where: { id: input.bookingId, businessId: input.businessId },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          depositExpiresAt: true,
+          amountDepositCentsSnapshot: true,
+          amountRemainingCentsSnapshot: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      if (!b) throw new BadRequestException('Booking not found');
+
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      if (!isBusinessOperator(actorRole)) {
+        throw new ForbiddenException(
+          'Not allowed to settle deposit for this booking',
+        );
+      }
+
+      if (b.status === 'CANCELLED') {
+        throw new BadRequestException('Booking not deposit-payable');
+      }
+
+      if ((b.amountDepositCentsSnapshot ?? 0) <= 0) {
+        throw new BadRequestException('Booking has no deposit requirement');
+      }
+
+      if (
+        b.status === 'CONFIRMED' &&
+        (b.paymentStatus === 'REMAINING_DUE_IN_SALON' ||
+          b.paymentStatus === 'PAID')
+      ) {
+        return {
+          id: b.id,
+          status: b.status,
+          paymentStatus: b.paymentStatus,
+        };
+      }
+
+      if (b.paymentStatus !== 'DEPOSIT_PENDING') {
+        throw new BadRequestException('Booking deposit is not pending');
+      }
+
+      if (b.depositExpiresAt && b.depositExpiresAt.getTime() <= Date.now()) {
+        throw new ConflictException('Deposit hold expired');
+      }
+
+      const nextPaymentStatus =
+        (b.amountRemainingCentsSnapshot ?? 0) > 0
+          ? 'REMAINING_DUE_IN_SALON'
+          : 'PAID';
+
+      const updated = await tx.booking.update({
+        where: { id: b.id },
+        data: {
+          status: 'CONFIRMED',
+          paymentStatus: nextPaymentStatus,
+          depositExpiresAt: null,
+        },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        staffId: updated.staffId,
+        customerId: updated.customerId,
+        action: 'CONFIRM',
+        status: updated.status,
+        toStartAt: updated.startAt,
+        toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          depositSettled: true,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      return updated;
+    });
+
+    if (input.idempotencyKey) {
+      await this.idemSave({
+        businessId: input.businessId,
+        key: input.idempotencyKey,
+        action: 'deposit-paid',
+        requestHash,
+        response: res,
+      });
+    }
+
+    return res;
+  }
+
 }
