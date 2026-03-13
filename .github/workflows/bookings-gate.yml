@@ -25,6 +25,7 @@ jobs:
       postgres:
         image: postgres:16
         env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           POSTGRES_USER: app
           POSTGRES_PASSWORD: app
           POSTGRES_DB: plantak
@@ -59,7 +60,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -67,7 +68,7 @@ jobs:
           version: 10.30.2
 
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
