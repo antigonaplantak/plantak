@@ -522,3 +522,25 @@ model RuntimeLease {
 
   @@index([expiresAt])
 }
+
+model PaymentProviderEvent {
+  id                  String    @id @default(cuid())
+  provider            String
+  providerEventId     String
+  eventType           String
+  businessId          String?
+  bookingId           String?
+  payload             Json
+  signatureVerifiedAt DateTime?
+  processedAt         DateTime?
+  rejectedAt          DateTime?
+  rejectReason        String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([provider, providerEventId])
+  @@index([businessId, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([processedAt])
+}
+
