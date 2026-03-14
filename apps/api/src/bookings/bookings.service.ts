@@ -136,6 +136,39 @@ export class BookingsService {
     });
   }
 
+
+  private writePaymentTransaction(
+    tx: Prisma.TransactionClient,
+    input: {
+      bookingId: string;
+      businessId: string;
+      transactionType:
+        | 'PARTIAL_REFUND'
+        | 'REFUND'
+        | 'FINAL_SETTLEMENT'
+        | 'DEPOSIT_FORFEIT'
+        | 'DEPOSIT_WAIVE';
+      amountCents: number;
+      currency?: string | null;
+      actorUserId?: string | null;
+      actorRole?: string | null;
+      meta?: Prisma.InputJsonValue | null;
+    },
+  ) {
+    return tx.paymentTransaction.create({
+      data: {
+        bookingId: input.bookingId,
+        businessId: input.businessId,
+        transactionType: input.transactionType,
+        amountCents: input.amountCents,
+        currency: input.currency ?? 'EUR',
+        actorUserId: input.actorUserId ?? null,
+        actorRole: input.actorRole ?? null,
+        meta: input.meta ?? Prisma.JsonNull,
+      },
+    });
+  }
+
   private getCustomerNoticeMinutes(action: 'cancel' | 'reschedule'): number {
     const envName =
       action === 'cancel'
@@ -1941,6 +1974,172 @@ export class BookingsService {
         businessId: input.businessId,
         key: input.idempotencyKey,
         action: 'payment-refund',
+        requestHash,
+        response: res,
+      });
+    }
+
+    return res;
+  }
+
+
+
+  async partialRefundPayment(input: {
+    businessId: string;
+    bookingId: string;
+    amountCents: number;
+    actorUserId: string;
+    actorRole: ActorRole;
+    idempotencyKey?: string;
+  }) {
+    const requestHash = JSON.stringify({
+      businessId: input.businessId,
+      bookingId: input.bookingId,
+      amountCents: input.amountCents,
+      action: 'payment-refund-partial',
+    });
+
+    if (input.idempotencyKey) {
+      const existing = await this.idemGet(
+        input.businessId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key reused with different request',
+          );
+        }
+        return existing.response;
+      }
+    }
+
+    if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+      throw new BadRequestException('amountCents must be a positive integer');
+    }
+
+    const res = await this.prisma.$transaction(async (tx) => {
+      const b = await tx.booking.findFirst({
+        where: { id: input.bookingId, businessId: input.businessId },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          amountTotalCentsSnapshot: true,
+          amountDepositCentsSnapshot: true,
+          amountRemainingCentsSnapshot: true,
+          currencySnapshot: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      if (!b) throw new BadRequestException('Booking not found');
+
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      if (!isBusinessOperator(actorRole)) {
+        throw new ForbiddenException(
+          'Not allowed to partially refund this booking',
+        );
+      }
+
+      if (b.paymentStatus === 'REFUNDED') {
+        throw new ConflictException('Booking is already fully refunded');
+      }
+
+      const refundableBase =
+        b.paymentStatus === 'PAID'
+          ? (b.amountTotalCentsSnapshot ?? 0)
+          : b.paymentStatus === 'REMAINING_DUE_IN_SALON' ||
+              b.paymentStatus === 'DEPOSIT_FORFEITED'
+            ? (b.amountDepositCentsSnapshot ?? 0)
+            : 0;
+
+      if (refundableBase <= 0) {
+        throw new ConflictException(
+          'Booking has no refundable paid amount for partial refund',
+        );
+      }
+
+      const prior = await tx.paymentTransaction.aggregate({
+        _sum: { amountCents: true },
+        where: {
+          bookingId: b.id,
+          transactionType: { in: ['REFUND', 'PARTIAL_REFUND'] },
+        },
+      });
+
+      const alreadyRefunded = prior._sum.amountCents ?? 0;
+      const remainingRefundable = refundableBase - alreadyRefunded;
+
+      if (remainingRefundable <= 0) {
+        throw new ConflictException('No refundable amount remaining');
+      }
+
+      if (input.amountCents >= remainingRefundable) {
+        throw new ConflictException(
+          'Use full refund flow for the full remaining refundable amount',
+        );
+      }
+
+      await this.writePaymentTransaction(tx, {
+        bookingId: b.id,
+        businessId: b.businessId,
+        transactionType: 'PARTIAL_REFUND',
+        amountCents: input.amountCents,
+        currency: b.currencySnapshot,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          refundableBase,
+          alreadyRefunded,
+          remainingRefundableAfter: remainingRefundable - input.amountCents,
+        } as Prisma.InputJsonValue,
+      });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: b.id,
+        businessId: b.businessId,
+        staffId: b.staffId,
+        customerId: b.customerId,
+        action: 'PAYMENT_PARTIAL_REFUNDED',
+        status: b.status,
+        toStartAt: b.startAt,
+        toEndAt: b.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          amountCents: input.amountCents,
+          refundableBase,
+          alreadyRefunded,
+          remainingRefundableAfter: remainingRefundable - input.amountCents,
+          paymentStatus: b.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      return {
+        id: b.id,
+        status: b.status,
+        paymentStatus: b.paymentStatus,
+        refundedAmountCents: input.amountCents,
+        remainingRefundableCents: remainingRefundable - input.amountCents,
+      };
+    });
+
+    if (input.idempotencyKey) {
+      await this.idemSave({
+        businessId: input.businessId,
+        key: input.idempotencyKey,
+        action: 'payment-refund-partial',
         requestHash,
         response: res,
       });

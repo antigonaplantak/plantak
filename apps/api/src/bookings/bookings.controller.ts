@@ -17,6 +17,7 @@ import { RescheduleBookingByIdDto } from './dto/reschedule-booking-by-id.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings.query.dto';
 import { ListBookingHistoryQueryDto } from './dto/list-booking-history.query.dto';
 import { BookingActionDto } from './dto/booking-action.dto';
+import { PaymentRefundDto } from './dto/payment-refund.dto';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BusinessRoles } from '../common/auth/business-roles.decorator';
 import { BusinessRolesGuard } from '../common/auth/business-roles.guard';
@@ -323,6 +324,28 @@ export class BookingsController {
     return this.bookings.refundPayment({
       businessId: dto.businessId,
       bookingId: id,
+      actorUserId,
+      actorRole,
+      idempotencyKey: dto.idempotencyKey,
+    });
+  }
+
+
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post(':id/payment-refund-partial')
+  async partialRefundPayment(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: PaymentRefundDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const actorRole = actorRoleFromJwt(req);
+    return this.bookings.partialRefundPayment({
+      businessId: dto.businessId,
+      bookingId: id,
+      amountCents: dto.amountCents,
       actorUserId,
       actorRole,
       idempotencyKey: dto.idempotencyKey,

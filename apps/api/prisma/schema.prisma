@@ -45,6 +45,14 @@ enum DepositServiceScopeMode {
   SELECTED_SERVICES
 }
 
+enum PaymentTransactionType {
+  PARTIAL_REFUND
+  REFUND
+  FINAL_SETTLEMENT
+  DEPOSIT_FORFEIT
+  DEPOSIT_WAIVE
+}
+
 model User {
   businessMemberships BusinessMember[]
 
@@ -228,6 +236,7 @@ model TimeOff {
 
 model Booking {
   history BookingHistory[]
+  paymentTransactions PaymentTransaction[]
 
   id                         String        @id @default(uuid())
   businessId                 String
@@ -544,3 +553,21 @@ model PaymentProviderEvent {
   @@index([processedAt])
 }
 
+model PaymentTransaction {
+  id              String                 @id @default(cuid())
+  bookingId       String
+  businessId      String
+  transactionType PaymentTransactionType
+  amountCents     Int
+  currency        String                 @default("EUR")
+  actorUserId     String?
+  actorRole       String?
+  meta            Json?
+  createdAt       DateTime               @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([transactionType, createdAt])
+}
