@@ -249,4 +249,25 @@ export class BookingsController {
     });
   }
 
+
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post(':id/payment-settle')
+  async settlePayment(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: BookingActionDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const actorRole = actorRoleFromJwt(req);
+    return this.bookings.settlePayment({
+      businessId: dto.businessId,
+      bookingId: id,
+      actorUserId,
+      actorRole,
+      idempotencyKey: dto.idempotencyKey,
+    });
+  }
+
 }
