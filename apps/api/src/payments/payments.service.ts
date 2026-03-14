@@ -120,6 +120,8 @@ export class PaymentsService {
       throw e;
     }
 
+    const rowId = (row as { id: string }).id;
+
     try {
       let result: unknown;
 
@@ -146,7 +148,7 @@ export class PaymentsService {
 
         default:
           await this.prisma.paymentProviderEvent.update({
-            where: { id: row.id },
+            where: { id: rowId },
             data: {
               rejectedAt: new Date(),
               rejectReason: `Unsupported event type: ${eventType}`,
@@ -164,7 +166,7 @@ export class PaymentsService {
       }
 
       await this.prisma.paymentProviderEvent.update({
-        where: { id: row.id },
+        where: { id: rowId },
         data: {
           processedAt: new Date(),
         },
@@ -180,12 +182,9 @@ export class PaymentsService {
         result,
       };
     } catch (e) {
-      if (
-        e instanceof BadRequestException ||
-        e instanceof ConflictException
-      ) {
+      if (e instanceof BadRequestException || e instanceof ConflictException) {
         await this.prisma.paymentProviderEvent.update({
-          where: { id: row.id },
+          where: { id: rowId },
           data: {
             rejectedAt: new Date(),
             rejectReason: e.message,

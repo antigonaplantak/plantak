@@ -27,14 +27,18 @@ export class PaymentsController {
           ? req.rawBody.toString('utf8')
           : JSON.stringify(body ?? {});
 
+    const businessId =
+      typeof body.businessId === 'string' ? body.businessId : '';
+    const bookingId = typeof body.bookingId === 'string' ? body.bookingId : '';
+
     return this.payments.processProviderWebhook({
       provider,
       providerEventId,
       eventType,
       signature,
       rawBody,
-      businessId: String(body?.businessId ?? ''),
-      bookingId: String(body?.bookingId ?? ''),
+      businessId,
+      bookingId,
       payload: body ?? {},
     });
   }
