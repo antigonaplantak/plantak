@@ -1,55 +1,66 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
+import crypto from 'crypto';
+import type { Request, Response, NextFunction } from 'express';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { AppModule } from './app.module';
+import { initSentry } from './common/sentry/sentry.init';
+
+type ReqWithId = Request & { id?: string };
+
+function requestIdMiddleware(
+  req: ReqWithId,
+  res: Response,
+  next: NextFunction,
+) {
+  const hdr = req.headers['x-request-id'];
+  const rid =
+    typeof hdr === 'string' && hdr.length > 0 ? hdr : crypto.randomUUID();
+  req.id = rid;
+  res.setHeader('x-request-id', rid);
+  next();
+}
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  initSentry();
 
-  app.use(cookieParser());
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
+  app.useLogger(app.get(Logger));
 
+  app.use(requestIdMiddleware);
   app.use(
     helmet({
-      hsts: true,
-      contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-          'script-src': ["'self'", "'unsafe-inline'"],
-          'style-src': ["'self'", "'unsafe-inline'"],
-        },
-      },
-      crossOriginResourcePolicy: { policy: 'cross-origin' },
-    }),
-  );
-
-  // IMPORTANT for cookies:
-  app.enableCors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-    credentials: true,
-  });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
+      contentSecurityPolicy: true,
     }),
   );
 
   app.setGlobalPrefix('api');
 
-  const config = new DocumentBuilder()
-    .setTitle('Plantak API')
-    .setDescription('Plantak booking platform API')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
+  const enableSwagger =
+    process.env.ENABLE_SWAGGER === 'true' ||
+    (process.env.ENABLE_SWAGGER !== 'false' &&
+      process.env.NODE_ENV !== 'production');
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document);
+  if (enableSwagger) {
+    const config = new DocumentBuilder()
+      .setTitle('Plantak API')
+      .setDescription('Plantak Booking API')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
 
-  await app.listen(process.env.PORT || 3000, '0.0.0.0');
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document, { useGlobalPrefix: true });
+  }
+
+  await app.listen(
+    process.env.PORT ? Number(process.env.PORT) : 3001,
+    '0.0.0.0',
+  );
 }
-bootstrap();
+
+void bootstrap();

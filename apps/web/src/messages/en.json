@@ -1,0 +1,12 @@
+{
+  "app": {
+    "title": "Plantak",
+    "dashboard": "Dashboard"
+  },
+  "nav": {
+    "calendar": "Calendar",
+    "bookings": "Bookings",
+    "services": "Services",
+    "staff": "Staff"
+  }
+}

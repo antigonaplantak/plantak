@@ -21,7 +21,41 @@ enum BookingStatus {
   NO_SHOW
 }
 
+enum DepositResolvedFromScope {
+  NONE
+  BUSINESS_DEFAULT
+  SERVICE_OVERRIDE
+  STAFF_DEFAULT
+  STAFF_SERVICE_OVERRIDE
+}
+
+enum BookingPaymentStatus {
+  NONE
+  DEPOSIT_PENDING
+  DEPOSIT_PAID
+  REMAINING_DUE_IN_SALON
+  PAID
+  DEPOSIT_WAIVED
+  DEPOSIT_FORFEITED
+  REFUNDED
+}
+
+enum DepositServiceScopeMode {
+  ALL_SERVICES
+  SELECTED_SERVICES
+}
+
+enum PaymentTransactionType {
+  PARTIAL_REFUND
+  REFUND
+  FINAL_SETTLEMENT
+  DEPOSIT_FORFEIT
+  DEPOSIT_WAIVE
+}
+
 model User {
+  businessMemberships BusinessMember[]
+
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
@@ -37,17 +71,24 @@ model User {
 }
 
 model Business {
+  staffInvites StaffInvite[]
+
+  members BusinessMember[]
+
   id        String   @id @default(uuid())
   name      String
   timezone  String   @default("Europe/Paris")
+  depositPercentDefault Int?
+  depositScopeMode      DepositServiceScopeMode @default(ALL_SERVICES)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  locations   Location[]
-  memberships Membership[]
-  services    Service[]
-  staff       Staff[]
-  bookings    Booking[]
+  locations         Location[]
+  memberships       Membership[]
+  services          Service[]
+  staff             Staff[]
+  bookings          Booking[]
+  serviceCategories ServiceCategory[]
 }
 
 model Location {
@@ -77,32 +118,60 @@ model Membership {
 }
 
 model Service {
-  id          String   @id @default(uuid())
-  businessId  String
-  locationId  String?
-  name        String
-  durationMin Int
-  priceCents  Int
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String  @id @default(uuid())
+  businessId      String
+  locationId      String?
+  name            String
+  durationMin     Int
+  bufferBeforeMin Int     @default(0)
+  bufferAfterMin  Int     @default(0)
+  priceCents      Int
+  currency        String  @default("EUR")
+  depositPercent            Int?
+  useBusinessDepositDefault Boolean @default(false)
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
-  staffLinks ServiceStaff[]
-  bookings   Booking[]
+  staffLinks           ServiceStaff[]
+  bookings             Booking[]
+  categoryId           String?
+  category             ServiceCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  description          String?
+  sortOrder            Int               @default(0)
+  isPublic             Boolean           @default(true)
+  variants             ServiceVariant[]
+  addons               ServiceAddon[]
+  visibility           ServiceVisibility @default(PUBLIC)
+  onlineBookingEnabled Boolean           @default(true)
+  isPinned             Boolean           @default(false)
+  position             Int               @default(0)
+  color                String?
+  archivedAt           DateTime?
+
+  @@index([businessId, categoryId, position])
+  @@index([businessId, visibility, onlineBookingEnabled])
+  @@index([businessId, archivedAt])
 }
 
 model Staff {
-  id         String   @id @default(uuid())
-  userId     String
-  businessId String
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  invites StaffInvite[]
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id          String   @id @default(uuid())
+  displayName String?
+  businessId  String
+  depositPercentDefault Int?
+  depositScopeMode      DepositServiceScopeMode @default(SELECTED_SERVICES)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   serviceLinks ServiceStaff[]
@@ -110,19 +179,32 @@ model Staff {
   timeOff      TimeOff[]
   bookings     Booking[]
 
+  @@unique([businessId, userId])
   @@unique([userId, businessId])
+  @@index([userId])
   @@index([businessId])
 }
 
 model ServiceStaff {
-  id        String @id @default(uuid())
-  serviceId String
-  staffId   String
-
-  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  staff   Staff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  id                      String   @id @default(uuid())
+  serviceId               String
+  staffId                 String
+  isActive                Boolean  @default(true)
+  onlineBookingEnabled    Boolean  @default(true)
+  durationMinOverride     Int?
+  priceCentsOverride      Int?
+  bufferBeforeMinOverride Int?
+  bufferAfterMinOverride  Int?
+  depositPercent         Int?
+  useStaffDepositDefault Boolean @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  Service                 Service  @relation(fields: [serviceId], references: [id])
+  Staff                   Staff    @relation(fields: [staffId], references: [id])
 
   @@unique([serviceId, staffId])
+  @@index([staffId, isActive])
+  @@index([serviceId, isActive])
 }
 
 model WorkingHour {
@@ -153,41 +235,73 @@ model TimeOff {
 }
 
 model Booking {
-  id         String        @id @default(uuid())
-  businessId String
-  locationId String?
-  customerId String
-  staffId    String
-  serviceId  String
-  startAt    DateTime
-  endAt      DateTime
-  status     BookingStatus @default(PENDING)
-  notes      String?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  history BookingHistory[]
+  paymentTransactions PaymentTransaction[]
 
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  customer User      @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
-  staff    Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
-  service  Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  id                         String        @id @default(uuid())
+  businessId                 String
+  locationId                 String?
+  customerId                 String
+  staffId                    String
+  serviceId                  String
+  serviceVariantId           String?
+  addonIdsSnapshot           String[]      @default([])
+  serviceNameSnapshot        String?
+  serviceVariantNameSnapshot String?
+  addonsSnapshot             Json?
+  durationMinSnapshot        Int?
+  bufferBeforeMinSnapshot    Int?
+  bufferAfterMinSnapshot     Int?
+  priceCentsSnapshot         Int?
+  currencySnapshot           String?
+  totalMinSnapshot           Int?
+  amountDepositCentsSnapshot   Int?
+  amountRemainingCentsSnapshot Int?
+  amountTotalCentsSnapshot     Int?
+  depositExpiresAt             DateTime?
+  depositPercentSnapshot       Int?
+  depositResolvedFromScope     DepositResolvedFromScope @default(NONE)
+  paymentStatus                BookingPaymentStatus @default(NONE)
+  startAt                    DateTime
+  endAt                      DateTime
+  status                     BookingStatus @default(PENDING)
+  notes                      String?
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  location       Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  customer       User            @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  staff          Staff           @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  service        Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  serviceVariant ServiceVariant? @relation(fields: [serviceVariantId], references: [id], onDelete: SetNull)
 
   @@index([businessId, startAt])
   @@index([staffId, startAt, endAt])
+  @@index([serviceVariantId])
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  actorId   String
-  action    String
-  entity    String
-  entityId  String?
-  metaJson  Json?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  businessId  String?
+  actorUserId String?
+  actorRole   String?
+  action      String
+  entityType  String
+  entityId    String?
+  ip          String?
+  userAgent   String?
+  requestId   String?
+  statusCode  Int?
+  durationMs  Int?
+  data        Json?
+  createdAt   DateTime @default(now())
+  User        User?    @relation(fields: [userId], references: [id])
+  userId      String?
 
-  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
-
-  @@index([actorId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
 }
 
 model RefreshSession {
@@ -208,4 +322,252 @@ enum MemberRole {
   OWNER
   MANAGER
   STAFF
+}
+
+model IdempotencyKey {
+  id          String   @id @default(cuid())
+  businessId  String
+  key         String
+  action      String
+  requestHash String
+  response    Json?
+  createdAt   DateTime @default(now())
+
+  @@unique([businessId, key])
+  @@index([businessId, action, createdAt])
+}
+
+enum BusinessRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+model BusinessMember {
+  id         String       @id @default(cuid())
+  businessId String
+  userId     String
+  role       BusinessRole
+  createdAt  DateTime     @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@index([businessId, role])
+  @@index([userId])
+}
+
+model LoginCode {
+  id        String    @id @default(cuid())
+  email     String
+  codeHash  String
+  purpose   String // "LOGIN"
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int       @default(0)
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  @@index([email, expiresAt])
+  @@index([email, usedAt])
+}
+
+model StaffInvite {
+  id               String       @id @default(cuid())
+  businessId       String
+  staffId          String
+  email            String
+  role             BusinessRole @default(STAFF)
+  tokenHash        String
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  acceptedByUserId String?
+  createdByUserId  String
+  createdAt        DateTime     @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staff    Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model BookingHistory {
+  id         String @id @default(cuid())
+  bookingId  String
+  businessId String
+
+  staffId    String?
+  customerId String?
+
+  action String
+  status String?
+
+  fromStartAt DateTime?
+  fromEndAt   DateTime?
+  toStartAt   DateTime?
+  toEndAt     DateTime?
+
+  actorUserId String?
+  actorRole   String?
+
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([staffId, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model ServiceCategory {
+  id         String    @id @default(uuid())
+  businessId String
+  name       String
+  position   Int       @default(0)
+  isPinned   Boolean   @default(false)
+  isVisible  Boolean   @default(true)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  services Service[]
+  Business Business  @relation(fields: [businessId], references: [id])
+
+  @@index([businessId, position])
+  @@index([businessId, archivedAt])
+}
+
+model ServiceVariant {
+  id                   String            @id @default(uuid())
+  serviceId            String
+  name                 String
+  durationMin          Int
+  priceCents           Int               @default(0)
+  bufferBeforeMin      Int               @default(0)
+  bufferAfterMin       Int               @default(0)
+  visibility           ServiceVisibility @default(PUBLIC)
+  onlineBookingEnabled Boolean           @default(true)
+  position             Int               @default(0)
+  archivedAt           DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  service  Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@index([serviceId, position])
+  @@index([serviceId, archivedAt])
+}
+
+model ServiceAddon {
+  id                   String            @id @default(uuid())
+  serviceId            String
+  name                 String
+  durationMin          Int               @default(0)
+  priceCents           Int               @default(0)
+  bufferBeforeMin      Int               @default(0)
+  bufferAfterMin       Int               @default(0)
+  visibility           ServiceVisibility @default(PUBLIC)
+  onlineBookingEnabled Boolean           @default(true)
+  position             Int               @default(0)
+  archivedAt           DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, position])
+  @@index([serviceId, archivedAt])
+}
+
+enum ServiceVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid())
+  businessId    String?
+  aggregateType String
+  aggregateId   String
+  eventType     String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now())
+  lockedAt      DateTime?
+  lockedBy      String?
+  sentAt        DateTime?
+  lastError     String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([status, availableAt, createdAt])
+  @@index([aggregateType, aggregateId, createdAt])
+  @@index([businessId, createdAt])
+}
+
+model RuntimeLease {
+  leaseKey     String   @id
+  ownerId      String
+  fencingToken BigInt   @default(0)
+  expiresAt    DateTime
+  heartbeatAt  DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
+model PaymentProviderEvent {
+  id                  String    @id @default(cuid())
+  provider            String
+  providerEventId     String
+  eventType           String
+  businessId          String?
+  bookingId           String?
+  payload             Json
+  signatureVerifiedAt DateTime?
+  processedAt         DateTime?
+  rejectedAt          DateTime?
+  rejectReason        String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([provider, providerEventId])
+  @@index([businessId, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([processedAt])
+}
+
+model PaymentTransaction {
+  id              String                 @id @default(cuid())
+  bookingId       String
+  businessId      String
+  transactionType PaymentTransactionType
+  amountCents     Int
+  currency        String                 @default("EUR")
+  actorUserId     String?
+  actorRole       String?
+  meta            Json?
+  createdAt       DateTime               @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([transactionType, createdAt])
 }

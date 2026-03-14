@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - '@swc/core'
+  - bcrypt
+  - msgpackr-extract
+  - prisma
+  - sharp
+  - unrs-resolver

@@ -1,7 +1,38 @@
-node_modules
-.env
-apps/api/.env
-dist
-coverage
-.prisma
-.DS_Store
+# API local backups / snapshots / temp
+apps/api/_backup*/
+apps/api/_pre_change_backups/
+apps/api/_baseline_safe_snapshot/
+apps/api/_final_working_snapshot/
+apps/api/_disabled_src/
+apps/api/api.log
+apps/api/*.bak
+apps/api/*.tmp
+apps/api/package.json.bak.*
+apps/api/src/**/*.bak
+apps/api/prisma/*.bak.*
+apps/api/.github/
+
+# local runtime
+apps/api/dist/
+apps/api/node_modules/
+
+# optional local web artifacts
+apps/web/node_modules/
+apps/web/.next/
+
+# extra local junk
+node_modules/
+**/*.bak.*
+**/*.snapshot.ts
+**/*.save
+
+_repo_backups/
+_db_backups/
+
+_db_reports/
+
+apps/_api_archives/
+apps/api/_queue_runs/
+
+apps/web/out/
+apps/web/coverage/

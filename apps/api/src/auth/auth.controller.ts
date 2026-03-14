@@ -1,85 +1,63 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-
 import {
   Body,
   Controller,
   Get,
   Post,
+  Query,
   Req,
-  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Response, Request } from 'express';
+import type { Request } from 'express';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { RefreshDto } from './dto/refresh.dto';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
-function cookieOptions() {
-  const isProd = process.env.NODE_ENV === 'production';
-  return {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax' as const,
-    path: '/api/auth/refresh',
-  };
-}
+type ReqUser = { sub?: string; email?: string; role?: string };
+type ReqWithUser = Request & { user?: ReqUser };
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService) {}
+  constructor(private readonly auth: AuthService) {}
 
   @Post('register')
-  async register(
-    @Body() dto: RegisterDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = await this.auth.register(dto.email, dto.password);
-    res.cookie('rt', (result as any).refreshToken, cookieOptions());
-    const { refreshToken, ...rest } = result as any;
-    return rest;
+  register(@Body() body: { email: string; password: string }) {
+    return this.auth.register(body.email, body.password);
   }
 
   @Post('login')
-  async login(
-    @Body() dto: LoginDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const result = await this.auth.login(dto.email, dto.password);
-    res.cookie('rt', (result as any).refreshToken, cookieOptions());
-    const { refreshToken, ...rest } = result as any;
-    return rest;
+  login(@Body() body: { email: string; password: string }) {
+    return this.auth.login(body.email, body.password);
   }
 
   @Post('refresh')
-  async refresh(
-    @Req() req: Request,
-    @Body() dto: RefreshDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const rtFromCookie = (req as any).cookies?.rt as string | undefined;
-    const refreshToken = rtFromCookie || dto.refreshToken;
-
-    const tokens = await this.auth.refresh(refreshToken);
-    res.cookie('rt', (tokens as any).refreshToken, cookieOptions());
-
-    const { refreshToken: _rt, ...rest } = tokens as any;
-    return rest;
+  refresh(@Body() body: { refreshToken: string }) {
+    return this.auth.refresh(body.refreshToken);
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  me(@Req() req: any) {
-    return req.user;
+  me(@Req() req: ReqWithUser) {
+    return req.user ?? {};
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('logout-all')
-  logoutAll(@Req() req: any, @Res({ passthrough: true }) res: Response) {
-    res.clearCookie('rt', { path: '/api/auth/refresh' });
-    return this.auth.revokeAllSessions(String(req.user.sub));
+  logoutAll(@Req() req: ReqWithUser) {
+    const userId = String(req.user?.sub ?? '');
+    return this.auth.revokeAllSessions(userId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('context')
+  context(@Req() req: ReqWithUser, @Query('businessId') businessId?: string) {
+    const userId = String(req.user?.sub ?? '');
+    return this.auth.getContext({
+      userId,
+      businessId: String(businessId ?? ''),
+    });
   }
 }
