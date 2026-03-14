@@ -1596,6 +1596,19 @@ export class BookingsService {
         } as Prisma.InputJsonValue,
       });
 
+      await this.writePaymentTransaction(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        transactionType: 'FINAL_SETTLEMENT',
+        amountCents: b.amountRemainingCentsSnapshot ?? 0,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
       return updated;
     });
 
@@ -1711,6 +1724,19 @@ export class BookingsService {
         status: updated.status,
         toStartAt: updated.startAt,
         toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      await this.writePaymentTransaction(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        transactionType: 'DEPOSIT_WAIVE',
+        amountCents: b.amountDepositCentsSnapshot ?? 0,
         actorUserId: input.actorUserId,
         actorRole,
         meta: {
@@ -1842,6 +1868,19 @@ export class BookingsService {
         } as Prisma.InputJsonValue,
       });
 
+      await this.writePaymentTransaction(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        transactionType: 'DEPOSIT_FORFEIT',
+        amountCents: b.amountDepositCentsSnapshot ?? 0,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
       return updated;
     });
 
@@ -1898,6 +1937,7 @@ export class BookingsService {
           paymentStatus: true,
           amountDepositCentsSnapshot: true,
           amountRemainingCentsSnapshot: true,
+          amountTotalCentsSnapshot: true,
           startAt: true,
           endAt: true,
         },
@@ -1929,6 +1969,11 @@ export class BookingsService {
       ) {
         throw new ConflictException('Only paid or forfeited payment can be refunded');
       }
+
+      const refundAmountCents =
+        b.paymentStatus === 'PAID'
+          ? (b.amountTotalCentsSnapshot ?? 0)
+          : (b.amountDepositCentsSnapshot ?? 0);
 
       const updated = await tx.booking.update({
         where: { id: b.id },
@@ -1962,6 +2007,19 @@ export class BookingsService {
           previousPaymentStatus: b.paymentStatus,
           amountDepositCentsSnapshot: b.amountDepositCentsSnapshot,
           amountRemainingCentsSnapshot: b.amountRemainingCentsSnapshot,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      await this.writePaymentTransaction(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        transactionType: 'REFUND',
+        amountCents: refundAmountCents,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
           paymentStatus: updated.paymentStatus,
         } as Prisma.InputJsonValue,
       });
