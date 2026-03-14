@@ -46,6 +46,7 @@ enum DepositServiceScopeMode {
 }
 
 enum PaymentTransactionType {
+  DEPOSIT_CAPTURE
   PARTIAL_REFUND
   REFUND
   FINAL_SETTLEMENT
@@ -75,13 +76,13 @@ model Business {
 
   members BusinessMember[]
 
-  id        String   @id @default(uuid())
-  name      String
-  timezone  String   @default("Europe/Paris")
+  id                    String                  @id @default(uuid())
+  name                  String
+  timezone              String                  @default("Europe/Paris")
   depositPercentDefault Int?
   depositScopeMode      DepositServiceScopeMode @default(ALL_SERVICES)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
 
   locations         Location[]
   memberships       Membership[]
@@ -118,15 +119,15 @@ model Membership {
 }
 
 model Service {
-  id              String  @id @default(uuid())
-  businessId      String
-  locationId      String?
-  name            String
-  durationMin     Int
-  bufferBeforeMin Int     @default(0)
-  bufferAfterMin  Int     @default(0)
-  priceCents      Int
-  currency        String  @default("EUR")
+  id                        String  @id @default(uuid())
+  businessId                String
+  locationId                String?
+  name                      String
+  durationMin               Int
+  bufferBeforeMin           Int     @default(0)
+  bufferAfterMin            Int     @default(0)
+  priceCents                Int
+  currency                  String  @default("EUR")
   depositPercent            Int?
   useBusinessDepositDefault Boolean @default(false)
 
@@ -161,16 +162,16 @@ model Service {
 model Staff {
   invites StaffInvite[]
 
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  id          String   @id @default(uuid())
-  displayName String?
-  businessId  String
+  userId                String?
+  user                  User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                    String                  @id @default(uuid())
+  displayName           String?
+  businessId            String
   depositPercentDefault Int?
   depositScopeMode      DepositServiceScopeMode @default(SELECTED_SERVICES)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  active                Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
@@ -195,8 +196,8 @@ model ServiceStaff {
   priceCentsOverride      Int?
   bufferBeforeMinOverride Int?
   bufferAfterMinOverride  Int?
-  depositPercent         Int?
-  useStaffDepositDefault Boolean @default(false)
+  depositPercent          Int?
+  useStaffDepositDefault  Boolean  @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
   Service                 Service  @relation(fields: [serviceId], references: [id])
@@ -235,39 +236,39 @@ model TimeOff {
 }
 
 model Booking {
-  history BookingHistory[]
+  history             BookingHistory[]
   paymentTransactions PaymentTransaction[]
 
-  id                         String        @id @default(uuid())
-  businessId                 String
-  locationId                 String?
-  customerId                 String
-  staffId                    String
-  serviceId                  String
-  serviceVariantId           String?
-  addonIdsSnapshot           String[]      @default([])
-  serviceNameSnapshot        String?
-  serviceVariantNameSnapshot String?
-  addonsSnapshot             Json?
-  durationMinSnapshot        Int?
-  bufferBeforeMinSnapshot    Int?
-  bufferAfterMinSnapshot     Int?
-  priceCentsSnapshot         Int?
-  currencySnapshot           String?
-  totalMinSnapshot           Int?
+  id                           String                   @id @default(uuid())
+  businessId                   String
+  locationId                   String?
+  customerId                   String
+  staffId                      String
+  serviceId                    String
+  serviceVariantId             String?
+  addonIdsSnapshot             String[]                 @default([])
+  serviceNameSnapshot          String?
+  serviceVariantNameSnapshot   String?
+  addonsSnapshot               Json?
+  durationMinSnapshot          Int?
+  bufferBeforeMinSnapshot      Int?
+  bufferAfterMinSnapshot       Int?
+  priceCentsSnapshot           Int?
+  currencySnapshot             String?
+  totalMinSnapshot             Int?
   amountDepositCentsSnapshot   Int?
   amountRemainingCentsSnapshot Int?
   amountTotalCentsSnapshot     Int?
   depositExpiresAt             DateTime?
   depositPercentSnapshot       Int?
   depositResolvedFromScope     DepositResolvedFromScope @default(NONE)
-  paymentStatus                BookingPaymentStatus @default(NONE)
-  startAt                    DateTime
-  endAt                      DateTime
-  status                     BookingStatus @default(PENDING)
-  notes                      String?
-  createdAt                  DateTime      @default(now())
-  updatedAt                  DateTime      @updatedAt
+  paymentStatus                BookingPaymentStatus     @default(NONE)
+  startAt                      DateTime
+  endAt                        DateTime
+  status                       BookingStatus            @default(PENDING)
+  notes                        String?
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
 
   business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   location       Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)

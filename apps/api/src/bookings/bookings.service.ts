@@ -142,6 +142,7 @@ export class BookingsService {
       bookingId: string;
       businessId: string;
       transactionType:
+        | 'DEPOSIT_CAPTURE'
         | 'PARTIAL_REFUND'
         | 'REFUND'
         | 'FINAL_SETTLEMENT'
@@ -1232,6 +1233,7 @@ export class BookingsService {
           depositExpiresAt: true,
           amountDepositCentsSnapshot: true,
           amountRemainingCentsSnapshot: true,
+          currencySnapshot: true,
           startAt: true,
           endAt: true,
         },
@@ -1317,6 +1319,20 @@ export class BookingsService {
         actorRole,
         meta: {
           depositSettled: true,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      await this.writePaymentTransaction(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        transactionType: 'DEPOSIT_CAPTURE',
+        amountCents: b.amountDepositCentsSnapshot ?? 0,
+        currency: b.currencySnapshot,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
           paymentStatus: updated.paymentStatus,
         } as Prisma.InputJsonValue,
       });
