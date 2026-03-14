@@ -270,4 +270,63 @@ export class BookingsController {
     });
   }
 
+
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post(':id/payment-waive')
+  async waivePayment(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: BookingActionDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const actorRole = actorRoleFromJwt(req);
+    return this.bookings.waivePayment({
+      businessId: dto.businessId,
+      bookingId: id,
+      actorUserId,
+      actorRole,
+      idempotencyKey: dto.idempotencyKey,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post(':id/payment-forfeit')
+  async forfeitPayment(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: BookingActionDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const actorRole = actorRoleFromJwt(req);
+    return this.bookings.forfeitPayment({
+      businessId: dto.businessId,
+      bookingId: id,
+      actorUserId,
+      actorRole,
+      idempotencyKey: dto.idempotencyKey,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post(':id/payment-refund')
+  async refundPayment(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: BookingActionDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+    const actorRole = actorRoleFromJwt(req);
+    return this.bookings.refundPayment({
+      businessId: dto.businessId,
+      bookingId: id,
+      actorUserId,
+      actorRole,
+      idempotencyKey: dto.idempotencyKey,
+    });
+  }
+
 }

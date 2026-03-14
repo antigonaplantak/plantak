@@ -1579,4 +1579,374 @@ export class BookingsService {
     return res;
   }
 
+
+
+  async waivePayment(input: {
+    businessId: string;
+    bookingId: string;
+    actorUserId: string;
+    actorRole: ActorRole;
+    idempotencyKey?: string;
+  }) {
+    const requestHash = JSON.stringify({
+      businessId: input.businessId,
+      bookingId: input.bookingId,
+      action: 'payment-waive',
+    });
+
+    if (input.idempotencyKey) {
+      const existing = await this.idemGet(
+        input.businessId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key reused with different request',
+          );
+        }
+        return existing.response;
+      }
+    }
+
+    const res = await this.prisma.$transaction(async (tx) => {
+      const b = await tx.booking.findFirst({
+        where: { id: input.bookingId, businessId: input.businessId },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          amountDepositCentsSnapshot: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      if (!b) throw new BadRequestException('Booking not found');
+
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      if (!isBusinessOperator(actorRole)) {
+        throw new ForbiddenException('Not allowed to waive payment for this booking');
+      }
+
+      if ((b.amountDepositCentsSnapshot ?? 0) <= 0) {
+        throw new BadRequestException('Booking has no deposit requirement');
+      }
+
+      if (b.paymentStatus === 'DEPOSIT_WAIVED') {
+        return { id: b.id, status: b.status, paymentStatus: b.paymentStatus };
+      }
+
+      if (b.paymentStatus !== 'DEPOSIT_PENDING') {
+        throw new ConflictException('Only pending deposit can be waived');
+      }
+
+      const updated = await tx.booking.update({
+        where: { id: b.id },
+        data: {
+          status: 'CONFIRMED',
+          paymentStatus: 'DEPOSIT_WAIVED',
+          depositExpiresAt: null,
+        },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        staffId: updated.staffId,
+        customerId: updated.customerId,
+        action: 'PAYMENT_WAIVED',
+        status: updated.status,
+        toStartAt: updated.startAt,
+        toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      return updated;
+    });
+
+    if (input.idempotencyKey) {
+      await this.idemSave({
+        businessId: input.businessId,
+        key: input.idempotencyKey,
+        action: 'payment-waive',
+        requestHash,
+        response: res,
+      });
+    }
+
+    return res;
+  }
+
+  async forfeitPayment(input: {
+    businessId: string;
+    bookingId: string;
+    actorUserId: string;
+    actorRole: ActorRole;
+    idempotencyKey?: string;
+  }) {
+    const requestHash = JSON.stringify({
+      businessId: input.businessId,
+      bookingId: input.bookingId,
+      action: 'payment-forfeit',
+    });
+
+    if (input.idempotencyKey) {
+      const existing = await this.idemGet(
+        input.businessId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key reused with different request',
+          );
+        }
+        return existing.response;
+      }
+    }
+
+    const res = await this.prisma.$transaction(async (tx) => {
+      const b = await tx.booking.findFirst({
+        where: { id: input.bookingId, businessId: input.businessId },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          amountDepositCentsSnapshot: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      if (!b) throw new BadRequestException('Booking not found');
+
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      if (!isBusinessOperator(actorRole)) {
+        throw new ForbiddenException('Not allowed to forfeit payment for this booking');
+      }
+
+      if ((b.amountDepositCentsSnapshot ?? 0) <= 0) {
+        throw new BadRequestException('Booking has no deposit requirement');
+      }
+
+      if (b.paymentStatus === 'DEPOSIT_FORFEITED') {
+        return { id: b.id, status: b.status, paymentStatus: b.paymentStatus };
+      }
+
+      if (!(b.status === 'CANCELLED' || b.status === 'NO_SHOW')) {
+        throw new ConflictException('Deposit can be forfeited only after cancel or no-show');
+      }
+
+      if (b.paymentStatus !== 'REMAINING_DUE_IN_SALON') {
+        throw new ConflictException('Only paid deposit can be forfeited');
+      }
+
+      const updated = await tx.booking.update({
+        where: { id: b.id },
+        data: {
+          paymentStatus: 'DEPOSIT_FORFEITED',
+        },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        staffId: updated.staffId,
+        customerId: updated.customerId,
+        action: 'PAYMENT_FORFEITED',
+        status: updated.status,
+        toStartAt: updated.startAt,
+        toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      return updated;
+    });
+
+    if (input.idempotencyKey) {
+      await this.idemSave({
+        businessId: input.businessId,
+        key: input.idempotencyKey,
+        action: 'payment-forfeit',
+        requestHash,
+        response: res,
+      });
+    }
+
+    return res;
+  }
+
+  async refundPayment(input: {
+    businessId: string;
+    bookingId: string;
+    actorUserId: string;
+    actorRole: ActorRole;
+    idempotencyKey?: string;
+  }) {
+    const requestHash = JSON.stringify({
+      businessId: input.businessId,
+      bookingId: input.bookingId,
+      action: 'payment-refund',
+    });
+
+    if (input.idempotencyKey) {
+      const existing = await this.idemGet(
+        input.businessId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key reused with different request',
+          );
+        }
+        return existing.response;
+      }
+    }
+
+    const res = await this.prisma.$transaction(async (tx) => {
+      const b = await tx.booking.findFirst({
+        where: { id: input.bookingId, businessId: input.businessId },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          amountDepositCentsSnapshot: true,
+          amountRemainingCentsSnapshot: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      if (!b) throw new BadRequestException('Booking not found');
+
+      const actorRole = await this.resolveBusinessActorRole(
+        tx,
+        input.businessId,
+        input.actorUserId,
+        input.actorRole,
+      );
+
+      if (!isBusinessOperator(actorRole)) {
+        throw new ForbiddenException('Not allowed to refund payment for this booking');
+      }
+
+      if (b.paymentStatus === 'REFUNDED') {
+        return { id: b.id, status: b.status, paymentStatus: b.paymentStatus };
+      }
+
+      if (
+        !(
+          b.paymentStatus === 'REMAINING_DUE_IN_SALON' ||
+          b.paymentStatus === 'PAID' ||
+          b.paymentStatus === 'DEPOSIT_FORFEITED'
+        )
+      ) {
+        throw new ConflictException('Only paid or forfeited payment can be refunded');
+      }
+
+      const updated = await tx.booking.update({
+        where: { id: b.id },
+        data: {
+          paymentStatus: 'REFUNDED',
+        },
+        select: {
+          id: true,
+          businessId: true,
+          staffId: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
+          startAt: true,
+          endAt: true,
+        },
+      });
+
+      await this.writeBookingHistory(tx, {
+        bookingId: updated.id,
+        businessId: updated.businessId,
+        staffId: updated.staffId,
+        customerId: updated.customerId,
+        action: 'PAYMENT_REFUNDED',
+        status: updated.status,
+        toStartAt: updated.startAt,
+        toEndAt: updated.endAt,
+        actorUserId: input.actorUserId,
+        actorRole,
+        meta: {
+          previousPaymentStatus: b.paymentStatus,
+          amountDepositCentsSnapshot: b.amountDepositCentsSnapshot,
+          amountRemainingCentsSnapshot: b.amountRemainingCentsSnapshot,
+          paymentStatus: updated.paymentStatus,
+        } as Prisma.InputJsonValue,
+      });
+
+      return updated;
+    });
+
+    if (input.idempotencyKey) {
+      await this.idemSave({
+        businessId: input.businessId,
+        key: input.idempotencyKey,
+        action: 'payment-refund',
+        requestHash,
+        response: res,
+      });
+    }
+
+    return res;
+  }
+
 }
