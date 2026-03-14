@@ -6,7 +6,9 @@ export interface DepositAmounts {
 
 function assertMoney(value: number, field: string): void {
   if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`${field} must be a non-negative integer in cents. Got: ${value}`);
+    throw new Error(
+      `${field} must be a non-negative integer in cents. Got: ${value}`,
+    );
   }
 }
 
@@ -24,8 +26,14 @@ export function calculateDepositAmounts(
     };
   }
 
-  if (!Number.isInteger(depositPercent) || depositPercent < 1 || depositPercent > 100) {
-    throw new Error(`depositPercent must be an integer between 1 and 100. Got: ${depositPercent}`);
+  if (
+    !Number.isInteger(depositPercent) ||
+    depositPercent < 1 ||
+    depositPercent > 100
+  ) {
+    throw new Error(
+      `depositPercent must be an integer between 1 and 100. Got: ${depositPercent}`,
+    );
   }
 
   const depositCents = Math.round((totalCents * depositPercent) / 100);

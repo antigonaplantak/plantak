@@ -209,7 +209,6 @@ export class BookingsController {
     });
   }
 
-
   @UseGuards(JwtAuthGuard, BusinessRolesGuard)
   @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
   @Post(':id/deposit-paid')
@@ -228,8 +227,6 @@ export class BookingsController {
       idempotencyKey: dto.idempotencyKey,
     });
   }
-
-
 
   @UseGuards(JwtAuthGuard, BusinessRolesGuard)
   @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
@@ -250,8 +247,6 @@ export class BookingsController {
     });
   }
 
-
-
   @UseGuards(JwtAuthGuard, BusinessRolesGuard)
   @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
   @Post(':id/payment-settle')
@@ -270,8 +265,6 @@ export class BookingsController {
       idempotencyKey: dto.idempotencyKey,
     });
   }
-
-
 
   @UseGuards(JwtAuthGuard, BusinessRolesGuard)
   @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
@@ -330,8 +323,6 @@ export class BookingsController {
     });
   }
 
-
-
   @UseGuards(JwtAuthGuard, BusinessRolesGuard)
   @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
   @Post(':id/payment-refund-partial')
@@ -351,5 +342,4 @@ export class BookingsController {
       idempotencyKey: dto.idempotencyKey,
     });
   }
-
 }

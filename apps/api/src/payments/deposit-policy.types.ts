@@ -5,9 +5,7 @@ export type DepositResolvedFrom =
   | 'staff_default'
   | 'staff_service_override';
 
-export type DepositServiceScopeMode =
-  | 'ALL_SERVICES'
-  | 'SELECTED_SERVICES';
+export type DepositServiceScopeMode = 'ALL_SERVICES' | 'SELECTED_SERVICES';
 
 export interface DepositPolicyInput {
   businessDefaultPercent: number | null | undefined;

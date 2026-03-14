@@ -136,7 +136,6 @@ export class BookingsService {
     });
   }
 
-
   private writePaymentTransaction(
     tx: Prisma.TransactionClient,
     input: {
@@ -973,10 +972,7 @@ export class BookingsService {
         b.paymentStatus === 'DEPOSIT_PENDING' &&
         (b.amountDepositCentsSnapshot ?? 0) > 0
       ) {
-        if (
-          b.depositExpiresAt &&
-          b.depositExpiresAt.getTime() <= Date.now()
-        ) {
+        if (b.depositExpiresAt && b.depositExpiresAt.getTime() <= Date.now()) {
           throw new ConflictException('Deposit hold expired');
         }
 
@@ -1195,7 +1191,6 @@ export class BookingsService {
     };
   }
 
-
   async markDepositPaid(input: {
     businessId: string;
     bookingId: string;
@@ -1342,8 +1337,6 @@ export class BookingsService {
     return res;
   }
 
-
-
   async expirePendingDeposit(input: {
     businessId: string;
     bookingId: string;
@@ -1471,8 +1464,6 @@ export class BookingsService {
     await this.cache.delByPrefix(this.cache.key('availability'));
     return updated;
   }
-
-
 
   async settlePayment(input: {
     businessId: string;
@@ -1625,8 +1616,6 @@ export class BookingsService {
     return res;
   }
 
-
-
   async waivePayment(input: {
     businessId: string;
     bookingId: string;
@@ -1681,7 +1670,9 @@ export class BookingsService {
       );
 
       if (!isBusinessOperator(actorRole)) {
-        throw new ForbiddenException('Not allowed to waive payment for this booking');
+        throw new ForbiddenException(
+          'Not allowed to waive payment for this booking',
+        );
       }
 
       if ((b.amountDepositCentsSnapshot ?? 0) <= 0) {
@@ -1815,7 +1806,9 @@ export class BookingsService {
       );
 
       if (!isBusinessOperator(actorRole)) {
-        throw new ForbiddenException('Not allowed to forfeit payment for this booking');
+        throw new ForbiddenException(
+          'Not allowed to forfeit payment for this booking',
+        );
       }
 
       if ((b.amountDepositCentsSnapshot ?? 0) <= 0) {
@@ -1827,7 +1820,9 @@ export class BookingsService {
       }
 
       if (!(b.status === 'CANCELLED' || b.status === 'NO_SHOW')) {
-        throw new ConflictException('Deposit can be forfeited only after cancel or no-show');
+        throw new ConflictException(
+          'Deposit can be forfeited only after cancel or no-show',
+        );
       }
 
       if (b.paymentStatus !== 'REMAINING_DUE_IN_SALON') {
@@ -1953,7 +1948,9 @@ export class BookingsService {
       );
 
       if (!isBusinessOperator(actorRole)) {
-        throw new ForbiddenException('Not allowed to refund payment for this booking');
+        throw new ForbiddenException(
+          'Not allowed to refund payment for this booking',
+        );
       }
 
       if (b.paymentStatus === 'REFUNDED') {
@@ -1967,7 +1964,9 @@ export class BookingsService {
           b.paymentStatus === 'DEPOSIT_FORFEITED'
         )
       ) {
-        throw new ConflictException('Only paid or forfeited payment can be refunded');
+        throw new ConflictException(
+          'Only paid or forfeited payment can be refunded',
+        );
       }
 
       const refundAmountCents =
@@ -2039,8 +2038,6 @@ export class BookingsService {
 
     return res;
   }
-
-
 
   async partialRefundPayment(input: {
     businessId: string;
@@ -2205,5 +2202,4 @@ export class BookingsService {
 
     return res;
   }
-
 }

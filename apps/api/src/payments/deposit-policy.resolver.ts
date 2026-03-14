@@ -24,7 +24,9 @@ export function resolveDepositPolicy(
   const businessPercent = normalizePercent(input.businessDefaultPercent);
   const servicePercent = normalizePercent(input.serviceDepositPercent);
   const staffPercent = normalizePercent(input.staffDefaultPercent);
-  const serviceStaffPercent = normalizePercent(input.serviceStaffDepositPercent);
+  const serviceStaffPercent = normalizePercent(
+    input.serviceStaffDepositPercent,
+  );
 
   let resolvedPercent: number | null = null;
   let resolvedFrom: DepositResolvedFrom = 'none';

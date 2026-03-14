@@ -25,9 +25,11 @@ function requestIdMiddleware(
 async function bootstrap() {
   initSentry();
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   app.useLogger(app.get(Logger));
-
 
   app.use(requestIdMiddleware);
   app.use(
