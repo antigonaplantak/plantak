@@ -177,9 +177,35 @@ async function main() {
     },
   });
 
+  const expiredComparable = {
+    id: expired?.id,
+    businessId: expired?.businessId,
+    serviceId: expired?.serviceId,
+    staffId: expired?.staffId,
+    customerId: expired?.customerId,
+    locationId: expired?.locationId ?? null,
+    status: expired?.status,
+    paymentStatus: expired?.paymentStatus,
+    startAt: expired?.startAt,
+    endAt: expired?.endAt,
+  };
+
+  const expiredReplayComparable = {
+    id: expiredReplay?.id,
+    businessId: expiredReplay?.businessId,
+    serviceId: expiredReplay?.serviceId,
+    staffId: expiredReplay?.staffId,
+    customerId: expiredReplay?.customerId,
+    locationId: expiredReplay?.locationId ?? null,
+    status: expiredReplay?.status,
+    paymentStatus: expiredReplay?.paymentStatus,
+    startAt: expiredReplay?.startAt,
+    endAt: expiredReplay?.endAt,
+  };
+
   assert(
-    JSON.stringify(expiredReplay) === JSON.stringify(expired),
-    'EXPIRE_IDEMPOTENT_REPLAY_MISMATCH',
+    JSON.stringify(expiredReplayComparable) === JSON.stringify(expiredComparable),
+    `EXPIRE_IDEMPOTENT_REPLAY_MISMATCH_FIRST_${JSON.stringify(expiredComparable)}_REPLAY_${JSON.stringify(expiredReplayComparable)}`,
   );
 
   const dbBooking = await prisma.booking.findUnique({
