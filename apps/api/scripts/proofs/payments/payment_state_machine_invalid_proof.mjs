@@ -207,7 +207,7 @@ async function main() {
         idempotencyKey: `${key}-pending-settle-invalid`,
       },
     },
-    409,
+    400,
     'PENDING_SETTLE_INVALID',
   );
 
