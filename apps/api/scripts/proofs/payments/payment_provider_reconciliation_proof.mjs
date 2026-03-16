@@ -26,24 +26,44 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-async function http(path, { method = 'GET', token, headers = {}, body } = {}) {
-  const url = `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
-  const res = await fetch(url, {
-    method,
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function http(path, init = {}, attempt = 0) {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
     headers: {
-      ...(body ? { 'content-type': 'application/json' } : {}),
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...headers,
+      'content-type': 'application/json',
+      ...(init.headers || {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
   });
 
   const text = await res.text();
   let json = null;
   try {
     json = text ? JSON.parse(text) : null;
-  } catch {
-    json = null;
+  } catch {}
+
+  const method = String(init.method || 'GET').toUpperCase();
+
+  if (
+    res.status === 429 &&
+    method === 'GET' &&
+    path.startsWith('/availability?')
+  ) {
+    if (attempt >= 6) {
+      console.error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
+      throw new Error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
+    }
+
+    await sleep(1200 * (attempt + 1));
+    return http(path, init, attempt + 1);
+  }
+
+  if (!res.ok) {
+    console.error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
+    throw new Error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
   }
 
   return { status: res.status, text, json };
