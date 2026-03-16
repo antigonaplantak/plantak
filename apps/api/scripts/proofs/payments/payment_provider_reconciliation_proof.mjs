@@ -243,7 +243,8 @@ async function provePaidReconcile(token) {
 
   assert(
     paidBooking?.paymentStatus === 'DEPOSIT_PAID' ||
-      paidBooking?.paymentStatus === 'PAID',
+      paidBooking?.paymentStatus === 'PAID' ||
+      paidBooking?.paymentStatus === 'REMAINING_DUE_IN_SALON',
     `PAID_BOOKING_PAYMENT_STATUS_${paidBooking?.paymentStatus}`,
   );
   assert(
