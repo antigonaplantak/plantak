@@ -97,7 +97,6 @@ export class PaymentsService {
     };
   }
 
-
   private getProviderSessionRef(payload: unknown): string {
     if (!payload || typeof payload !== 'object') return '';
 
