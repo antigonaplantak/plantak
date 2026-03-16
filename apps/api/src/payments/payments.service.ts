@@ -405,15 +405,36 @@ export class PaymentsService {
           },
         });
 
-        return {
-          ok: true,
-          duplicate: true,
-          provider,
-          providerEventId,
-          eventType: existing?.eventType ?? eventType,
-          processed: Boolean(existing?.processedAt),
-          rejected: Boolean(existing?.rejectedAt),
-        };
+        if (existing && !existing.processedAt) {
+          row = await this.prisma.paymentProviderEvent.update({
+            where: { id: existing.id },
+            data: {
+              eventType,
+              businessId,
+              bookingId,
+              payload: input.payload as Prisma.InputJsonValue,
+              signatureVerifiedAt: new Date(),
+              rejectedAt: null,
+              rejectReason: null,
+            },
+            select: {
+              id: true,
+              provider: true,
+              providerEventId: true,
+              eventType: true,
+            },
+          });
+        } else {
+          return {
+            ok: true,
+            duplicate: true,
+            provider,
+            providerEventId,
+            eventType: existing?.eventType ?? eventType,
+            processed: Boolean(existing?.processedAt),
+            rejected: Boolean(existing?.rejectedAt),
+          };
+        }
       }
       throw e;
     }
@@ -545,6 +566,8 @@ export class PaymentsService {
           businessId: resolvedBusinessId,
           bookingId: resolvedBookingId,
           processedAt: new Date(),
+          rejectedAt: null,
+          rejectReason: null,
         },
       });
 
