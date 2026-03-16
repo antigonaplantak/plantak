@@ -346,7 +346,7 @@ async function main() {
         idempotencyKey: `${key}-paid-partial-refund-full-invalid`,
       },
     },
-    400,
+    409,
     'PAID_PARTIAL_REFUND_FULL_INVALID',
   );
 
