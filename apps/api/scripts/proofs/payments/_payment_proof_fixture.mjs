@@ -1,0 +1,151 @@
+import { PrismaClient } from '@prisma/client';
+
+export const prisma = new PrismaClient();
+
+export const API = process.env.API_URL ?? 'http://localhost:3001/api';
+export const OWNER_EMAIL = process.env.OWNER_EMAIL ?? 'owner@example.com';
+export const BUSINESS_ID = process.env.BUSINESS_ID ?? 'b1';
+export const TZ_NAME = process.env.TZ_NAME ?? 'Europe/Paris';
+
+export function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+
+export async function http(path, { method = 'GET', token, body } = {}) {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {}
+
+  if (!res.ok) {
+    throw new Error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
+  }
+
+  return json;
+}
+
+export async function authOwner() {
+  const magicReq = await http('/auth/magic/request', {
+    method: 'POST',
+    body: { email: OWNER_EMAIL },
+  });
+  const code = magicReq?.devCode ?? magicReq?.code;
+  assert(typeof code === 'string' && code.length > 0, 'MAGIC_CODE_NOT_FOUND');
+
+  const verify = await http('/auth/magic/verify', {
+    method: 'POST',
+    body: { email: OWNER_EMAIL, code },
+  });
+
+  const token =
+    verify?.accessToken ?? verify?.token ?? verify?.tokens?.accessToken;
+  const userId = verify?.user?.id ?? verify?.userId ?? verify?.sub;
+
+  assert(typeof token === 'string' && token.length > 0, 'TOKEN_NOT_FOUND');
+  assert(typeof userId === 'string' && userId.length > 0, 'USER_ID_NOT_FOUND');
+
+  return { token, userId };
+}
+
+export async function ensureDepositEnabledFixture() {
+  const staff = await prisma.staff.findFirst({
+    where: { businessId: BUSINESS_ID, active: true },
+    select: { id: true },
+  });
+  assert(staff?.id, 'ACTIVE_STAFF_NOT_FOUND');
+
+  const proofServiceName = '__payment-proof-service__';
+
+  const existing = await prisma.service.findFirst({
+    where: {
+      businessId: BUSINESS_ID,
+      name: proofServiceName,
+      archivedAt: null,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+
+  const service = existing
+    ? await prisma.service.update({
+        where: { id: existing.id },
+        data: {
+          active: true,
+          archivedAt: null,
+          visibility: 'PUBLIC',
+          onlineBookingEnabled: true,
+          durationMin: 50,
+          priceCents: 5000,
+          currency: 'EUR',
+          depositPercent: 30,
+          useBusinessDepositDefault: false,
+        },
+        select: { id: true },
+      })
+    : await prisma.service.create({
+        data: {
+          businessId: BUSINESS_ID,
+          name: proofServiceName,
+          durationMin: 50,
+          priceCents: 5000,
+          currency: 'EUR',
+          depositPercent: 30,
+          useBusinessDepositDefault: false,
+          active: true,
+          visibility: 'PUBLIC',
+          onlineBookingEnabled: true,
+        },
+        select: { id: true },
+      });
+
+  await prisma.serviceStaff.upsert({
+    where: {
+      serviceId_staffId: {
+        serviceId: service.id,
+        staffId: staff.id,
+      },
+    },
+    create: {
+      serviceId: service.id,
+      staffId: staff.id,
+      isActive: true,
+      onlineBookingEnabled: true,
+      useStaffDepositDefault: false,
+      depositPercent: 30,
+    },
+    update: {
+      isActive: true,
+      onlineBookingEnabled: true,
+      useStaffDepositDefault: false,
+      depositPercent: 30,
+    },
+  });
+
+  return { serviceId: service.id, staffId: staff.id };
+}
+
+export async function getFirstSlot({ businessId, serviceId, staffId, dateYmd }) {
+  const qs = new URLSearchParams({
+    businessId,
+    serviceId,
+    staffId,
+    date: dateYmd,
+    tz: TZ_NAME,
+  });
+
+  const availability = await http(`/availability?${qs.toString()}`);
+  const slot = availability?.results?.[0]?.slots?.[0];
+  assert(slot?.start, 'NO_SLOT_FOUND');
+  return slot;
+}

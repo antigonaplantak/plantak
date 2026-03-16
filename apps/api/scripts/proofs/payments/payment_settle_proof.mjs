@@ -1,83 +1,24 @@
-import { PrismaClient } from '@prisma/client';
+import {
+  prisma,
+  BUSINESS_ID,
+  assert,
+  http,
+  authOwner,
+  ensureDepositEnabledFixture,
+  getFirstSlot,
+} from './_payment_proof_fixture.mjs';
 
-const prisma = new PrismaClient();
-
-const API = process.env.API_URL ?? 'http://localhost:3001/api';
-const OWNER_EMAIL = process.env.OWNER_EMAIL ?? 'owner@example.com';
-const BUSINESS_ID = process.env.BUSINESS_ID ?? 'b1';
 const DATE_YMD = process.env.DATE_YMD ?? '2027-01-08';
-const TZ_NAME = process.env.TZ_NAME ?? 'Europe/Paris';
-
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg);
-}
-
-async function http(path, { method = 'GET', token, body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {}
-
-  if (!res.ok) {
-    throw new Error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
-  }
-
-  return json;
-}
 
 async function main() {
-  const staff = await prisma.staff.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-  const service = await prisma.service.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-
-  assert(staff?.id, 'ACTIVE_STAFF_NOT_FOUND');
-  assert(service?.id, 'ACTIVE_SERVICE_NOT_FOUND');
-
-  const magicReq = await http('/auth/magic/request', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL },
-  });
-  const code = magicReq?.devCode ?? magicReq?.code;
-  assert(typeof code === 'string' && code.length > 0, 'MAGIC_CODE_NOT_FOUND');
-
-  const verify = await http('/auth/magic/verify', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL, code },
-  });
-
-  const token = verify?.accessToken ?? verify?.token ?? verify?.tokens?.accessToken;
-  const userId = verify?.user?.id ?? verify?.userId ?? verify?.sub;
-
-  assert(typeof token === 'string' && token.length > 0, 'TOKEN_NOT_FOUND');
-  assert(typeof userId === 'string' && userId.length > 0, 'USER_ID_NOT_FOUND');
-
-  const qs = new URLSearchParams({
+  const { serviceId, staffId } = await ensureDepositEnabledFixture();
+  const { token, userId } = await authOwner();
+  const slot = await getFirstSlot({
     businessId: BUSINESS_ID,
-    serviceId: service.id,
-    staffId: staff.id,
-    date: DATE_YMD,
-    tz: TZ_NAME,
+    serviceId,
+    staffId,
+    dateYmd: DATE_YMD,
   });
-
-  const availability = await http(`/availability?${qs.toString()}`);
-  const slot = availability?.results?.[0]?.slots?.[0];
-  assert(slot?.start, 'NO_SLOT_FOUND');
 
   const key = `payment-settle-proof-${Date.now()}`;
 
@@ -86,8 +27,8 @@ async function main() {
     token,
     body: {
       businessId: BUSINESS_ID,
-      serviceId: service.id,
-      staffId: staff.id,
+      serviceId,
+      staffId,
       customerId: userId,
       startAt: slot.start,
       idempotencyKey: `${key}-create`,

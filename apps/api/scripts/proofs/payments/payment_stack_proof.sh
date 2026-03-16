@@ -19,5 +19,6 @@ API_URL="$API_URL" DATE_YMD="$(day 3)" node scripts/proofs/payments/payment_refu
 API_URL="$API_URL" DATE_YMD="$(day 4)" node scripts/proofs/payments/payment_partial_refund_proof.mjs
 API_URL="$API_URL" DATE_YMD="$(day 5)" node scripts/proofs/payments/payment_state_machine_invalid_proof.mjs
 API_URL="$API_URL" DATE_YMD="$(day 6)" node scripts/proofs/payments/payment_deposit_expire_proof.mjs
+API_URL="$API_URL" DATE_YMD="$(day 7)" node scripts/proofs/payments/payment_session_create_proof.mjs
 
 echo "PAYMENTS_PROOF_STACK_OK"
