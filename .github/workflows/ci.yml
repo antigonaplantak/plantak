@@ -97,11 +97,11 @@ jobs:
       - name: Observability proof
         run: pnpm -C apps/api run ops:observability:proof
 
-      - name: Payments proof stack
-        run: pnpm -C apps/api run proof:payments:stack
-
       - name: Booking gate
         run: pnpm -C apps/api run gate:bookings
+
+      - name: Payments proof stack
+        run: pnpm -C apps/api run proof:payments:stack
 
   docker_build:
     name: Docker build (when Dockerfile exists)
