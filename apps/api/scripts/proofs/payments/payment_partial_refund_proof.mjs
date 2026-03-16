@@ -1,41 +1,14 @@
-import { PrismaClient } from '@prisma/client';
-import { authOwner, ensureDepositEnabledFixture, getFirstSlot } from './_payment_proof_fixture.mjs';
+import {
+  prisma,
+  BUSINESS_ID,
+  assert,
+  http,
+  authOwner,
+  ensureDepositEnabledFixture,
+  getFirstSlot,
+} from './_payment_proof_fixture.mjs';
 
-const prisma = new PrismaClient();
-
-const API = process.env.API_URL ?? 'http://localhost:3001/api';
-const OWNER_EMAIL = process.env.OWNER_EMAIL ?? 'owner@example.com';
-const BUSINESS_ID = process.env.BUSINESS_ID ?? 'b1';
 const DATE_YMD = process.env.DATE_YMD ?? '2027-01-11';
-const TZ_NAME = process.env.TZ_NAME ?? 'Europe/Paris';
-
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg);
-}
-
-async function http(path, { method = 'GET', token, body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {}
-
-  if (!res.ok) {
-    throw new Error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
-  }
-
-  return json;
-}
 
 async function main() {
   const { serviceId, staffId } = await ensureDepositEnabledFixture();
@@ -223,25 +196,30 @@ async function main() {
     dbBooking.paymentStatus === 'PAID',
     `DB_PAYMENT_STATUS_AFTER_PARTIAL_REFUND_${dbBooking?.paymentStatus}`,
   );
-
   assert(txs.length === 1, `PARTIAL_REFUND_TX_COUNT_${txs.length}`);
   assert(
     txs[0].amountCents === partialAmountCents,
-    `PARTIAL_REFUND_AMOUNT_MISMATCH_${txs[0].amountCents}_EXPECTED_${partialAmountCents}`,
+    `PARTIAL_REFUND_LEDGER_AMOUNT_${txs[0].amountCents}_EXPECTED_${partialAmountCents}`,
   );
   assert(
-    (refundedAgg._sum.amountCents ?? 0) == partialAmountCents,
-    `PARTIAL_REFUND_AGG_MISMATCH_${refundedAgg._sum.amountCents ?? 0}_EXPECTED_${partialAmountCents}`,
+    (refundedAgg._sum.amountCents ?? 0) === partialAmountCents,
+    `PARTIAL_REFUND_AGG_${refundedAgg._sum.amountCents ?? 0}_EXPECTED_${partialAmountCents}`,
   );
 
-  console.log(JSON.stringify({
-    bookingId: booking.id,
-    status: dbBooking.status,
-    paymentStatus: dbBooking.paymentStatus,
-    partialRefundAmountCents: partialAmountCents,
-    remainingRefundableCents: (dbBooking.amountTotalCentsSnapshot ?? 0) - partialAmountCents,
-    ledgerRow: txs[0],
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        bookingId: booking.id,
+        status: dbBooking.status,
+        paymentStatus: dbBooking.paymentStatus,
+        partialRefundAmountCents: partialAmountCents,
+        remainingRefundableCents: totalAmountCents - partialAmountCents,
+        ledgerRow: txs[0],
+      },
+      null,
+      2,
+    ),
+  );
 
   console.log('PAYMENT_PARTIAL_REFUND_PROOF_OK');
 }

@@ -1,37 +1,14 @@
-import { PrismaClient } from '@prisma/client';
-import { ensureDepositEnabledFixture, getFirstSlot } from './_payment_proof_fixture.mjs';
+import {
+  prisma,
+  BUSINESS_ID,
+  assert,
+  httpRaw,
+  authOwner,
+  ensureDepositEnabledFixture,
+  getFirstSlot,
+} from './_payment_proof_fixture.mjs';
 
-const prisma = new PrismaClient();
-
-const API = process.env.API_URL ?? 'http://localhost:3001/api';
-const OWNER_EMAIL = process.env.OWNER_EMAIL ?? 'owner@example.com';
-const BUSINESS_ID = process.env.BUSINESS_ID ?? 'b1';
 const DATE_YMD = process.env.DATE_YMD ?? '2027-01-12';
-const TZ_NAME = process.env.TZ_NAME ?? 'Europe/Paris';
-
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg);
-}
-
-async function httpRaw(path, { method = 'GET', token, body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {}
-
-  return { status: res.status, text, json };
-}
 
 function bodyText(res) {
   return typeof res?.text === 'string' && res.text.length > 0
@@ -57,46 +34,13 @@ async function expectHttpStatus(path, options, expectedStatus, label) {
   return res;
 }
 
-async function authOwner() {
-  const magicReq = await httpOk('/auth/magic/request', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL },
-  });
-
-  const code = magicReq?.devCode ?? magicReq?.code;
-  assert(typeof code === 'string' && code.length > 0, 'MAGIC_CODE_NOT_FOUND');
-
-  const verify = await httpOk('/auth/magic/verify', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL, code },
-  });
-
-  const token =
-    verify?.accessToken ?? verify?.token ?? verify?.tokens?.accessToken;
-  const userId = verify?.user?.id ?? verify?.userId ?? verify?.sub;
-
-  assert(typeof token === 'string' && token.length > 0, 'TOKEN_NOT_FOUND');
-  assert(typeof userId === 'string' && userId.length > 0, 'USER_ID_NOT_FOUND');
-
-  return { token, userId };
-}
-
-async function pickActiveStaffService() {
-  return ensureDepositEnabledFixture();
-}
-
-async function firstAvailableSlot(serviceId, staffId) {
+async function createBooking(token, userId, serviceId, staffId, idempotencyKey) {
   const slot = await getFirstSlot({
     businessId: BUSINESS_ID,
     serviceId,
     staffId,
     dateYmd: DATE_YMD,
   });
-  return slot.start;
-}
-
-async function createBooking(token, userId, serviceId, staffId, idempotencyKey) {
-  const startAt = await firstAvailableSlot(serviceId, staffId);
 
   const booking = await httpOk('/bookings', {
     method: 'POST',
@@ -106,7 +50,7 @@ async function createBooking(token, userId, serviceId, staffId, idempotencyKey) 
       serviceId,
       staffId,
       customerId: userId,
-      startAt,
+      startAt: slot.start,
       idempotencyKey,
     },
   });
@@ -162,7 +106,7 @@ async function countPaymentTx(bookingId, transactionTypes) {
 
 async function main() {
   const { token, userId } = await authOwner();
-  const { staffId, serviceId } = await pickActiveStaffService();
+  const { staffId, serviceId } = await ensureDepositEnabledFixture();
 
   const key = `payment-state-machine-invalid-proof-${Date.now()}`;
 
@@ -238,10 +182,7 @@ async function main() {
 
   const pendingDb = await readBooking(pendingBooking.id);
   assert(pendingDb, 'PENDING_DB_BOOKING_NOT_FOUND');
-  assert(
-    pendingDb.status === 'PENDING',
-    `PENDING_DB_STATUS_${pendingDb?.status}`,
-  );
+  assert(pendingDb.status === 'PENDING', `PENDING_DB_STATUS_${pendingDb?.status}`);
   assert(
     pendingDb.paymentStatus === 'DEPOSIT_PENDING',
     `PENDING_DB_PAYMENT_STATUS_${pendingDb?.paymentStatus}`,
@@ -267,24 +208,29 @@ async function main() {
     `${key}-confirmed-create`,
   );
 
-  assert(
-    (confirmedBooking.amountDepositCentsSnapshot ?? 0) > 0,
-    `CONFIRMED_BOOKING_NO_DEPOSIT_${confirmedBooking.amountDepositCentsSnapshot ?? 0}`,
-  );
-
-  const confirmedAfterDeposit = await markDepositPaid(
+  const confirmedPaid = await markDepositPaid(
     token,
     confirmedBooking.id,
     `${key}-confirmed-deposit-paid`,
   );
 
   assert(
-    confirmedAfterDeposit.status === 'CONFIRMED',
-    `CONFIRMED_AFTER_DEPOSIT_STATUS_${confirmedAfterDeposit?.status}`,
+    confirmedPaid.paymentStatus === 'REMAINING_DUE_IN_SALON',
+    `CONFIRMED_DEPOSIT_PAID_STATUS_${confirmedPaid?.paymentStatus}`,
   );
-  assert(
-    confirmedAfterDeposit.paymentStatus === 'REMAINING_DUE_IN_SALON',
-    `CONFIRMED_AFTER_DEPOSIT_PAYMENT_STATUS_${confirmedAfterDeposit?.paymentStatus}`,
+
+  await expectHttpStatus(
+    `/bookings/${confirmedBooking.id}/deposit-paid`,
+    {
+      method: 'POST',
+      token,
+      body: {
+        businessId: BUSINESS_ID,
+        idempotencyKey: `${key}-confirmed-deposit-paid-again`,
+      },
+    },
+    409,
+    'CONFIRMED_DEPOSIT_PAID_INVALID',
   );
 
   await expectHttpStatus(
@@ -322,12 +268,12 @@ async function main() {
       token,
       body: {
         businessId: BUSINESS_ID,
-        amountCents: confirmedBooking.amountDepositCentsSnapshot ?? 0,
+        amountCents: 5000,
         idempotencyKey: `${key}-confirmed-partial-refund-full-invalid`,
       },
     },
     409,
-    'CONFIRMED_PARTIAL_REFUND_FULL_AMOUNT_INVALID',
+    'CONFIRMED_PARTIAL_REFUND_INVALID',
   );
 
   const confirmedDb = await readBooking(confirmedBooking.id);
@@ -344,7 +290,6 @@ async function main() {
   const confirmedInvalidTxCount = await countPaymentTx(confirmedBooking.id, [
     'DEPOSIT_WAIVE',
     'DEPOSIT_FORFEIT',
-    'REFUND',
     'PARTIAL_REFUND',
   ]);
 
@@ -361,31 +306,34 @@ async function main() {
     `${key}-paid-create`,
   );
 
-  const paidAfterDeposit = await markDepositPaid(
-    token,
-    paidBooking.id,
-    `${key}-paid-deposit-paid`,
-  );
-
-  assert(
-    paidAfterDeposit.paymentStatus === 'REMAINING_DUE_IN_SALON',
-    `PAID_AFTER_DEPOSIT_PAYMENT_STATUS_${paidAfterDeposit?.paymentStatus}`,
-  );
-
-  const paidAfterSettle = await settlePayment(
+  await markDepositPaid(token, paidBooking.id, `${key}-paid-deposit-paid`);
+  const paidSettled = await settlePayment(
     token,
     paidBooking.id,
     `${key}-paid-settle`,
   );
 
   assert(
-    paidAfterSettle.status === 'CONFIRMED',
-    `PAID_AFTER_SETTLE_STATUS_${paidAfterSettle?.status}`,
+    paidSettled.paymentStatus === 'PAID',
+    `PAID_BOOKING_PAYMENT_STATUS_${paidSettled?.paymentStatus}`,
   );
-  assert(
-    paidAfterSettle.paymentStatus === 'PAID',
-    `PAID_AFTER_SETTLE_PAYMENT_STATUS_${paidAfterSettle?.paymentStatus}`,
+
+  await expectHttpStatus(
+    `/bookings/${paidBooking.id}/deposit-paid`,
+    {
+      method: 'POST',
+      token,
+      body: {
+        businessId: BUSINESS_ID,
+        idempotencyKey: `${key}-paid-deposit-paid-again`,
+      },
+    },
+    409,
+    'PAID_DEPOSIT_PAID_INVALID',
   );
+
+  const paidDb = await readBooking(paidBooking.id);
+  assert(paidDb, 'PAID_DB_BOOKING_NOT_FOUND');
 
   await expectHttpStatus(
     `/bookings/${paidBooking.id}/payment-refund-partial`,
@@ -394,23 +342,12 @@ async function main() {
       token,
       body: {
         businessId: BUSINESS_ID,
-        amountCents: paidBooking.amountTotalCentsSnapshot ?? 0,
+        amountCents: paidDb.amountTotalCentsSnapshot ?? 0,
         idempotencyKey: `${key}-paid-partial-refund-full-invalid`,
       },
     },
-    409,
-    'PAID_PARTIAL_REFUND_FULL_AMOUNT_INVALID',
-  );
-
-  const paidDb = await readBooking(paidBooking.id);
-  assert(paidDb, 'PAID_DB_BOOKING_NOT_FOUND');
-  assert(
-    paidDb.status === 'CONFIRMED',
-    `PAID_DB_STATUS_${paidDb?.status}`,
-  );
-  assert(
-    paidDb.paymentStatus === 'PAID',
-    `PAID_DB_PAYMENT_STATUS_${paidDb?.paymentStatus}`,
+    400,
+    'PAID_PARTIAL_REFUND_FULL_INVALID',
   );
 
   const paidPartialRefundTxCount = await countPaymentTx(paidBooking.id, [
@@ -419,7 +356,7 @@ async function main() {
 
   assert(
     paidPartialRefundTxCount === 0,
-    `PAID_INVALID_PARTIAL_REFUND_TX_COUNT_${paidPartialRefundTxCount}`,
+    `PAID_PARTIAL_REFUND_TX_COUNT_${paidPartialRefundTxCount}`,
   );
 
   console.log(

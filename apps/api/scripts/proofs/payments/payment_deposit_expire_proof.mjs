@@ -1,52 +1,16 @@
-import { PrismaClient } from '@prisma/client';
-import { authOwner, ensureDepositEnabledFixture, getFirstSlot } from './_payment_proof_fixture.mjs';
+import {
+  prisma,
+  BUSINESS_ID,
+  TZ_NAME,
+  assert,
+  http,
+  httpRaw,
+  authOwner,
+  ensureDepositEnabledFixture,
+  getFirstSlot,
+} from './_payment_proof_fixture.mjs';
 
-const prisma = new PrismaClient();
-
-const API = process.env.API_URL ?? 'http://localhost:3001/api';
-const OWNER_EMAIL = process.env.OWNER_EMAIL ?? 'owner@example.com';
-const BUSINESS_ID = process.env.BUSINESS_ID ?? 'b1';
 const DATE_YMD = process.env.DATE_YMD ?? '2027-01-14';
-const TZ_NAME = process.env.TZ_NAME ?? 'Europe/Paris';
-
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg);
-}
-
-async function httpRaw(path, { method = 'GET', token, body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {}
-
-  return {
-    ok: res.ok,
-    status: res.status,
-    text,
-    json,
-  };
-}
-
-async function http(path, opts = {}) {
-  const res = await httpRaw(path, opts);
-  if (!res.ok) {
-    throw new Error(
-      `HTTP_${res.status} ${opts.method ?? 'GET'} ${path} :: ${res.text}`,
-    );
-  }
-  return res.json;
-}
 
 function hasSlot(results, staffId, start) {
   const row = results?.find((x) => x.staffId === staffId) ?? results?.[0];
@@ -73,7 +37,6 @@ async function main() {
     dateYmd: DATE_YMD,
   });
 
-  const availabilityBeforeCreate = await http(`/availability?${qs.toString()}`);
   assert(createSlot?.start, 'NO_SLOT_FOUND_BEFORE_CREATE');
 
   const key = `payment-deposit-expire-proof-${Date.now()}`;
