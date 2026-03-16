@@ -54,6 +54,14 @@ enum PaymentTransactionType {
   DEPOSIT_WAIVE
 }
 
+enum PaymentSessionStatus {
+  OPEN
+  CONSUMED
+  EXPIRED
+  CANCELLED
+  FAILED
+}
+
 model User {
   businessMemberships BusinessMember[]
 
@@ -238,6 +246,7 @@ model TimeOff {
 model Booking {
   history             BookingHistory[]
   paymentTransactions PaymentTransaction[]
+  paymentSessions     PaymentSession[]
 
   id                           String                   @id @default(uuid())
   businessId                   String
@@ -571,4 +580,34 @@ model PaymentTransaction {
   @@index([bookingId, createdAt])
   @@index([businessId, createdAt])
   @@index([transactionType, createdAt])
+}
+
+model PaymentSession {
+  id                 String               @id @default(cuid())
+  bookingId          String
+  businessId         String
+  provider           String
+  providerSessionRef String?
+  checkoutUrl        String?
+  returnUrl          String?
+  cancelUrl          String?
+  status             PaymentSessionStatus @default(OPEN)
+  amountCents        Int
+  currency           String               @default("EUR")
+  idempotencyKey     String?
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  cancelledAt        DateTime?
+  failedAt           DateTime?
+  failureReason      String?
+  meta               Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, idempotencyKey])
+  @@index([bookingId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([status, expiresAt])
 }
