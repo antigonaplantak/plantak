@@ -1,7 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
@@ -15,6 +17,23 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
   ) {}
+
+  private readonly paymentSessionSelect = {
+    id: true,
+    bookingId: true,
+    businessId: true,
+    provider: true,
+    providerSessionRef: true,
+    checkoutUrl: true,
+    returnUrl: true,
+    cancelUrl: true,
+    status: true,
+    amountCents: true,
+    currency: true,
+    expiresAt: true,
+    createdAt: true,
+    updatedAt: true,
+  } as const;
 
   private getWebhookSecret(): string {
     const secret = process.env.PAYMENT_WEBHOOK_SECRET ?? '';
@@ -38,6 +57,168 @@ export class PaymentsService {
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       throw new UnauthorizedException('Invalid payment webhook signature');
     }
+  }
+
+  private isExpired(at: Date | null | undefined): boolean {
+    return Boolean(at && at.getTime() <= Date.now());
+  }
+
+  private mapPaymentSession(session: {
+    id: string;
+    bookingId: string;
+    businessId: string;
+    provider: string;
+    providerSessionRef: string | null;
+    checkoutUrl: string | null;
+    returnUrl: string | null;
+    cancelUrl: string | null;
+    status: string;
+    amountCents: number;
+    currency: string;
+    expiresAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: session.id,
+      bookingId: session.bookingId,
+      businessId: session.businessId,
+      provider: session.provider,
+      providerSessionRef: session.providerSessionRef,
+      checkoutUrl: session.checkoutUrl,
+      returnUrl: session.returnUrl,
+      cancelUrl: session.cancelUrl,
+      status: session.status,
+      amountCents: session.amountCents,
+      currency: session.currency,
+      expiresAt: session.expiresAt,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    };
+  }
+
+  async createBookingPaymentSession(input: {
+    businessId: string;
+    bookingId: string;
+    actorUserId: string;
+    idempotencyKey?: string;
+    returnUrl?: string;
+    cancelUrl?: string;
+  }) {
+    const businessId = String(input.businessId || '').trim();
+    const bookingId = String(input.bookingId || '').trim();
+    const actorUserId = String(input.actorUserId || '').trim();
+    const idempotencyKey = String(input.idempotencyKey || '').trim() || null;
+    const returnUrl = String(input.returnUrl || '').trim() || null;
+    const cancelUrl = String(input.cancelUrl || '').trim() || null;
+
+    if (!businessId) throw new BadRequestException('businessId is required');
+    if (!bookingId) throw new BadRequestException('bookingId is required');
+    if (!actorUserId) {
+      throw new ForbiddenException('Authentication required');
+    }
+
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        id: bookingId,
+        businessId,
+      },
+      select: {
+        id: true,
+        businessId: true,
+        customerId: true,
+        status: true,
+        paymentStatus: true,
+        amountDepositCentsSnapshot: true,
+        currencySnapshot: true,
+        depositExpiresAt: true,
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.customerId !== actorUserId) {
+      throw new ForbiddenException(
+        'Not allowed to create payment session for this booking',
+      );
+    }
+
+    if (booking.status !== 'PENDING') {
+      throw new ConflictException('Booking is not payment-session eligible');
+    }
+
+    const depositAmountCents = booking.amountDepositCentsSnapshot ?? 0;
+    if (depositAmountCents <= 0) {
+      throw new BadRequestException('Booking has no deposit requirement');
+    }
+
+    if (booking.paymentStatus !== 'DEPOSIT_PENDING') {
+      throw new ConflictException('Booking deposit is not pending');
+    }
+
+    if (!booking.depositExpiresAt || this.isExpired(booking.depositExpiresAt)) {
+      throw new ConflictException('Deposit hold expired');
+    }
+
+    if (idempotencyKey) {
+      const existingByKey = await this.prisma.paymentSession.findUnique({
+        where: {
+          businessId_idempotencyKey: {
+            businessId,
+            idempotencyKey,
+          },
+        },
+        select: this.paymentSessionSelect,
+      });
+
+      if (existingByKey) {
+        if (existingByKey.bookingId !== booking.id) {
+          throw new ConflictException(
+            'Idempotency key already used for different payment session',
+          );
+        }
+
+        return this.mapPaymentSession(existingByKey);
+      }
+    }
+
+    const existingOpen = await this.prisma.paymentSession.findFirst({
+      where: {
+        bookingId: booking.id,
+        status: 'OPEN',
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: this.paymentSessionSelect,
+    });
+
+    if (existingOpen) {
+      return this.mapPaymentSession(existingOpen);
+    }
+
+    const created = await this.prisma.paymentSession.create({
+      data: {
+        bookingId: booking.id,
+        businessId: booking.businessId,
+        provider: 'stub',
+        status: 'OPEN',
+        amountCents: depositAmountCents,
+        currency: booking.currencySnapshot || 'EUR',
+        expiresAt: booking.depositExpiresAt,
+        idempotencyKey,
+        returnUrl,
+        cancelUrl,
+      },
+      select: this.paymentSessionSelect,
+    });
+
+    return this.mapPaymentSession(created);
   }
 
   async processProviderWebhook(input: {

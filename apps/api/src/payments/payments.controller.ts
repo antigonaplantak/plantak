@@ -1,16 +1,49 @@
-import { Body, Controller, Headers, HttpCode, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PaymentsService } from './payments.service';
+import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 
+type ReqUser = { sub: string; email: string; role?: string };
+type ReqWithUser = Request & { user?: ReqUser };
 type ReqWithRawBody = Request & { rawBody?: Buffer | string };
 
 @ApiTags('Payments')
-@Controller('payments/provider')
+@Controller('payments')
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
-  @Post('webhook')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('bookings/:id/session')
+  async createBookingPaymentSession(
+    @Req() req: ReqWithUser,
+    @Param('id') id: string,
+    @Body() dto: CreatePaymentSessionDto,
+  ) {
+    const actorUserId = String(req.user?.sub ?? '');
+
+    return this.payments.createBookingPaymentSession({
+      businessId: dto.businessId,
+      bookingId: id,
+      actorUserId,
+      idempotencyKey: dto.idempotencyKey,
+      returnUrl: dto.returnUrl,
+      cancelUrl: dto.cancelUrl,
+    });
+  }
+
+  @Post('provider/webhook')
   @HttpCode(200)
   async providerWebhook(
     @Req() req: ReqWithRawBody,
