@@ -296,6 +296,29 @@ export class PaymentsService {
     return this.mapPaymentSession(created);
   }
 
+  async reconcileProviderEvent(input: {
+    provider: string;
+    providerEventId: string;
+    eventType: string;
+    businessId: string;
+    bookingId: string;
+    providerSessionRef?: string;
+    payload?: unknown;
+  }) {
+    return this.processProviderEventInternal({
+      provider: input.provider,
+      providerEventId: input.providerEventId,
+      eventType: input.eventType,
+      businessId: input.businessId,
+      bookingId: input.bookingId,
+      signature: '',
+      rawBody: JSON.stringify(input.payload ?? {}),
+      payload: input.payload ?? {},
+      providerSessionRef: input.providerSessionRef ?? '',
+      verifySignature: false,
+    });
+  }
+
   async processProviderWebhook(input: {
     provider: string;
     providerEventId: string;
@@ -305,6 +328,25 @@ export class PaymentsService {
     signature: string;
     rawBody: string;
     payload: unknown;
+  }) {
+    return this.processProviderEventInternal({
+      ...input,
+      providerSessionRef: '',
+      verifySignature: true,
+    });
+  }
+
+  private async processProviderEventInternal(input: {
+    provider: string;
+    providerEventId: string;
+    eventType: string;
+    businessId: string;
+    bookingId: string;
+    signature: string;
+    rawBody: string;
+    payload: unknown;
+    providerSessionRef?: string;
+    verifySignature: boolean;
   }) {
     const provider = String(input.provider || '').trim();
     const providerEventId = String(input.providerEventId || '').trim();
@@ -318,7 +360,9 @@ export class PaymentsService {
     }
     if (!eventType) throw new BadRequestException('eventType is required');
 
-    this.assertSignature(input.rawBody, input.signature);
+    if (input.verifySignature) {
+      this.assertSignature(input.rawBody, input.signature);
+    }
 
     let row;
     try {
@@ -377,7 +421,9 @@ export class PaymentsService {
     const rowId = (row as { id: string }).id;
 
     try {
-      const providerSessionRef = this.getProviderSessionRef(input.payload);
+      const providerSessionRef =
+        String(input.providerSessionRef || '').trim() ||
+        this.getProviderSessionRef(input.payload);
       if (!providerSessionRef) {
         throw new BadRequestException('providerSessionRef is required');
       }

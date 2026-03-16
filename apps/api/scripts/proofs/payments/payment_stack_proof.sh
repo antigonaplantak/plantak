@@ -25,5 +25,6 @@ API_URL="$API_URL" DATE_YMD="$(day 5)" node scripts/proofs/payments/payment_stat
 API_URL="$API_URL" DATE_YMD="$(day 6)" node scripts/proofs/payments/payment_deposit_expire_proof.mjs
 API_URL="$API_URL" DATE_YMD="$(day 7)" node scripts/proofs/payments/payment_session_create_proof.mjs
 API_URL="$API_URL" DATE_YMD="$(day 8)" node scripts/proofs/payments/payment_provider_webhook_proof.mjs
+API_URL="$API_URL" DATE_YMD="$(day 9)" node scripts/proofs/payments/payment_provider_reconciliation_proof.mjs
 
 echo "PAYMENTS_PROOF_STACK_OK"
