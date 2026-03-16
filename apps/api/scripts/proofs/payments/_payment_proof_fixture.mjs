@@ -148,22 +148,40 @@ export async function ensureDepositEnabledFixture() {
   return { serviceId: service.id, staffId: staff.id };
 }
 
+function addDays(dateYmd, offsetDays) {
+  const [year, month, day] = dateYmd.split('-').map(Number);
+  const dt = new Date(Date.UTC(year, month - 1, day + offsetDays));
+  return dt.toISOString().slice(0, 10);
+}
+
 export async function getFirstSlot({
   businessId,
   serviceId,
   staffId,
   dateYmd,
+  searchDays = 14,
 }) {
-  const qs = new URLSearchParams({
-    businessId,
-    serviceId,
-    staffId,
-    date: dateYmd,
-    tz: TZ_NAME,
-  });
+  for (let offset = 0; offset < searchDays; offset += 1) {
+    const probeDate = addDays(dateYmd, offset);
 
-  const availability = await http(`/availability?${qs.toString()}`);
-  const slot = availability?.results?.[0]?.slots?.[0];
-  assert(slot?.start, 'NO_SLOT_FOUND');
-  return slot;
+    const qs = new URLSearchParams({
+      businessId,
+      serviceId,
+      staffId,
+      date: probeDate,
+      tz: TZ_NAME,
+    });
+
+    const availability = await http(`/availability?${qs.toString()}`);
+    const preferredRow =
+      availability?.results?.find((row) => row.staffId === staffId) ??
+      availability?.results?.[0];
+
+    const slot = preferredRow?.slots?.[0];
+    if (slot?.start) {
+      return slot;
+    }
+  }
+
+  throw new Error(`NO_SLOT_FOUND_IN_WINDOW_${dateYmd}_${searchDays}D`);
 }
