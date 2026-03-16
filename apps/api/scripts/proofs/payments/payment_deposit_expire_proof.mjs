@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { authOwner, ensureDepositEnabledFixture, getFirstSlot } from './_payment_proof_fixture.mjs';
 
 const prisma = new PrismaClient();
 
@@ -54,49 +55,25 @@ function hasSlot(results, staffId, start) {
 }
 
 async function main() {
-  const staff = await prisma.staff.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-
-  const service = await prisma.service.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-
-  assert(staff?.id, 'ACTIVE_STAFF_NOT_FOUND');
-  assert(service?.id, 'ACTIVE_SERVICE_NOT_FOUND');
-
-  const magicReq = await http('/auth/magic/request', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL },
-  });
-
-  const code = magicReq?.devCode ?? magicReq?.code;
-  assert(typeof code === 'string' && code.length > 0, 'MAGIC_CODE_NOT_FOUND');
-
-  const verify = await http('/auth/magic/verify', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL, code },
-  });
-
-  const token =
-    verify?.accessToken ?? verify?.token ?? verify?.tokens?.accessToken;
-  const userId = verify?.user?.id ?? verify?.userId ?? verify?.sub;
-
-  assert(typeof token === 'string' && token.length > 0, 'TOKEN_NOT_FOUND');
-  assert(typeof userId === 'string' && userId.length > 0, 'USER_ID_NOT_FOUND');
+  const { serviceId, staffId } = await ensureDepositEnabledFixture();
+  const { token, userId } = await authOwner();
 
   const qs = new URLSearchParams({
     businessId: BUSINESS_ID,
-    serviceId: service.id,
-    staffId: staff.id,
+    serviceId,
+    staffId,
     date: DATE_YMD,
     tz: TZ_NAME,
   });
 
+  const createSlot = await getFirstSlot({
+    businessId: BUSINESS_ID,
+    serviceId,
+    staffId,
+    dateYmd: DATE_YMD,
+  });
+
   const availabilityBeforeCreate = await http(`/availability?${qs.toString()}`);
-  const createSlot = availabilityBeforeCreate?.results?.[0]?.slots?.[0];
   assert(createSlot?.start, 'NO_SLOT_FOUND_BEFORE_CREATE');
 
   const key = `payment-deposit-expire-proof-${Date.now()}`;
@@ -106,8 +83,8 @@ async function main() {
     token,
     body: {
       businessId: BUSINESS_ID,
-      serviceId: service.id,
-      staffId: staff.id,
+      serviceId,
+      staffId,
       customerId: userId,
       startAt: createSlot.start,
       idempotencyKey: `${key}-create`,
@@ -124,7 +101,7 @@ async function main() {
 
   const availabilityAfterCreate = await http(`/availability?${qs.toString()}`);
   assert(
-    !hasSlot(availabilityAfterCreate?.results, staff.id, createSlot.start),
+    !hasSlot(availabilityAfterCreate?.results, staffId, createSlot.start),
     'SLOT_STILL_VISIBLE_AFTER_CREATE',
   );
 
@@ -240,7 +217,7 @@ async function main() {
 
   const availabilityAfterExpire = await http(`/availability?${qs.toString()}`);
   assert(
-    hasSlot(availabilityAfterExpire?.results, staff.id, createSlot.start),
+    hasSlot(availabilityAfterExpire?.results, staffId, createSlot.start),
     'SLOT_NOT_REOPENED_AFTER_EXPIRE',
   );
 

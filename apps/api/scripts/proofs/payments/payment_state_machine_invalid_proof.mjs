@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { ensureDepositEnabledFixture, getFirstSlot } from './_payment_proof_fixture.mjs';
 
 const prisma = new PrismaClient();
 
@@ -81,35 +82,16 @@ async function authOwner() {
 }
 
 async function pickActiveStaffService() {
-  const staff = await prisma.staff.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-
-  const service = await prisma.service.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-
-  assert(staff?.id, 'ACTIVE_STAFF_NOT_FOUND');
-  assert(service?.id, 'ACTIVE_SERVICE_NOT_FOUND');
-
-  return { staffId: staff.id, serviceId: service.id };
+  return ensureDepositEnabledFixture();
 }
 
 async function firstAvailableSlot(serviceId, staffId) {
-  const qs = new URLSearchParams({
+  const slot = await getFirstSlot({
     businessId: BUSINESS_ID,
     serviceId,
     staffId,
-    date: DATE_YMD,
-    tz: TZ_NAME,
+    dateYmd: DATE_YMD,
   });
-
-  const availability = await httpOk(`/availability?${qs.toString()}`);
-  const slot = availability?.results?.[0]?.slots?.[0];
-
-  assert(slot?.start, 'NO_SLOT_FOUND');
   return slot.start;
 }
 

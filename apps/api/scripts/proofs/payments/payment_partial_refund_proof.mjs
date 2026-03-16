@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { authOwner, ensureDepositEnabledFixture, getFirstSlot } from './_payment_proof_fixture.mjs';
 
 const prisma = new PrismaClient();
 
@@ -37,49 +38,14 @@ async function http(path, { method = 'GET', token, body } = {}) {
 }
 
 async function main() {
-  const staff = await prisma.staff.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-
-  const service = await prisma.service.findFirst({
-    where: { businessId: BUSINESS_ID, active: true },
-    select: { id: true },
-  });
-
-  assert(staff?.id, 'ACTIVE_STAFF_NOT_FOUND');
-  assert(service?.id, 'ACTIVE_SERVICE_NOT_FOUND');
-
-  const magicReq = await http('/auth/magic/request', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL },
-  });
-
-  const code = magicReq?.devCode ?? magicReq?.code;
-  assert(typeof code === 'string' && code.length > 0, 'MAGIC_CODE_NOT_FOUND');
-
-  const verify = await http('/auth/magic/verify', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL, code },
-  });
-
-  const token = verify?.accessToken ?? verify?.token ?? verify?.tokens?.accessToken;
-  const userId = verify?.user?.id ?? verify?.userId ?? verify?.sub;
-
-  assert(typeof token === 'string' && token.length > 0, 'TOKEN_NOT_FOUND');
-  assert(typeof userId === 'string' && userId.length > 0, 'USER_ID_NOT_FOUND');
-
-  const qs = new URLSearchParams({
+  const { serviceId, staffId } = await ensureDepositEnabledFixture();
+  const { token, userId } = await authOwner();
+  const slot = await getFirstSlot({
     businessId: BUSINESS_ID,
-    serviceId: service.id,
-    staffId: staff.id,
-    date: DATE_YMD,
-    tz: TZ_NAME,
+    serviceId,
+    staffId,
+    dateYmd: DATE_YMD,
   });
-
-  const availability = await http(`/availability?${qs.toString()}`);
-  const slot = availability?.results?.[0]?.slots?.[0];
-  assert(slot?.start, 'NO_SLOT_FOUND');
 
   const key = `payment-partial-refund-proof-${Date.now()}`;
 
@@ -88,8 +54,8 @@ async function main() {
     token,
     body: {
       businessId: BUSINESS_ID,
-      serviceId: service.id,
-      staffId: staff.id,
+      serviceId,
+      staffId,
       customerId: userId,
       startAt: slot.start,
       idempotencyKey: `${key}-create`,
