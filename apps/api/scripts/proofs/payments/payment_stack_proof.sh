@@ -8,6 +8,10 @@ day() {
   date -u -d "$BASE_DATE + $1 day" +%F
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+API_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+cd "$API_DIR"
+
 echo "== PAYMENTS PROOF STACK =="
 echo "API_URL=$API_URL"
 echo "BASE_DATE=$BASE_DATE"
