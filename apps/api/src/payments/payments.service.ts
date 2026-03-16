@@ -97,6 +97,81 @@ export class PaymentsService {
     };
   }
 
+  private getProviderSessionRef(payload: unknown): string {
+    if (!payload || typeof payload !== 'object') return '';
+
+    const rec = payload as Record<string, unknown>;
+    const candidates = [
+      rec.providerSessionRef,
+      rec.provider_session_ref,
+      rec.sessionRef,
+      rec.sessionId,
+      rec.providerReference,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return '';
+  }
+
+  private getFailureReason(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+
+    const rec = payload as Record<string, unknown>;
+    const candidates = [rec.failureReason, rec.reason, rec.message, rec.error];
+
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
+  private async markPaymentSessionState(input: {
+    sessionId: string;
+    nextStatus: 'CONSUMED' | 'EXPIRED' | 'CANCELLED' | 'FAILED';
+    eventType: string;
+    providerEventId: string;
+    payload: unknown;
+    failureReason?: string | null;
+  }) {
+    const now = new Date();
+
+    const data: Prisma.PaymentSessionUpdateInput = {
+      status: input.nextStatus,
+      meta: {
+        providerEventId: input.providerEventId,
+        eventType: input.eventType,
+        payload: input.payload as Prisma.InputJsonValue,
+      } as Prisma.InputJsonValue,
+    };
+
+    if (input.nextStatus === 'CONSUMED') {
+      data.consumedAt = now;
+    }
+
+    if (input.nextStatus === 'CANCELLED') {
+      data.cancelledAt = now;
+    }
+
+    if (input.nextStatus === 'FAILED') {
+      data.failedAt = now;
+      data.failureReason =
+        input.failureReason ?? 'Provider marked payment session failed';
+    }
+
+    await this.prisma.paymentSession.update({
+      where: { id: input.sessionId },
+      data,
+    });
+  }
+
   async createBookingPaymentSession(input: {
     businessId: string;
     bookingId: string;
@@ -242,8 +317,6 @@ export class PaymentsService {
       throw new BadRequestException('providerEventId is required');
     }
     if (!eventType) throw new BadRequestException('eventType is required');
-    if (!businessId) throw new BadRequestException('businessId is required');
-    if (!bookingId) throw new BadRequestException('bookingId is required');
 
     this.assertSignature(input.rawBody, input.signature);
 
@@ -304,27 +377,101 @@ export class PaymentsService {
     const rowId = (row as { id: string }).id;
 
     try {
+      const providerSessionRef = this.getProviderSessionRef(input.payload);
+      if (!providerSessionRef) {
+        throw new BadRequestException('providerSessionRef is required');
+      }
+
+      const session = await this.prisma.paymentSession.findFirst({
+        where: {
+          provider,
+          providerSessionRef,
+        },
+        select: {
+          id: true,
+          businessId: true,
+          bookingId: true,
+          status: true,
+          providerSessionRef: true,
+        },
+      });
+
+      if (!session) {
+        throw new NotFoundException('Payment session not found');
+      }
+
+      if (businessId && businessId !== session.businessId) {
+        throw new ConflictException('Payment session business mismatch');
+      }
+
+      if (bookingId && bookingId !== session.bookingId) {
+        throw new ConflictException('Payment session booking mismatch');
+      }
+
+      if (session.status !== 'OPEN') {
+        throw new ConflictException('Payment session not open');
+      }
+
+      const resolvedBusinessId = session.businessId;
+      const resolvedBookingId = session.bookingId;
       let result: unknown;
 
       switch (eventType) {
         case 'deposit.paid':
           result = await this.bookings.markDepositPaid({
-            businessId,
-            bookingId,
+            businessId: resolvedBusinessId,
+            bookingId: resolvedBookingId,
             actorUserId: 'system:payment-webhook',
             actorRole: 'ADMIN',
             idempotencyKey: `provider:${provider}:${providerEventId}:deposit-paid`,
+          });
+          await this.markPaymentSessionState({
+            sessionId: session.id,
+            nextStatus: 'CONSUMED',
+            eventType,
+            providerEventId,
+            payload: input.payload,
           });
           break;
 
         case 'deposit.expired':
           result = await this.bookings.expirePendingDeposit({
-            businessId,
-            bookingId,
+            businessId: resolvedBusinessId,
+            bookingId: resolvedBookingId,
             actorUserId: 'system:payment-webhook',
             actorRole: 'ADMIN',
             idempotencyKey: `provider:${provider}:${providerEventId}:deposit-expire`,
           });
+          await this.markPaymentSessionState({
+            sessionId: session.id,
+            nextStatus: 'EXPIRED',
+            eventType,
+            providerEventId,
+            payload: input.payload,
+          });
+          break;
+
+        case 'deposit.cancelled':
+          await this.markPaymentSessionState({
+            sessionId: session.id,
+            nextStatus: 'CANCELLED',
+            eventType,
+            providerEventId,
+            payload: input.payload,
+          });
+          result = { sessionId: session.id, status: 'CANCELLED' };
+          break;
+
+        case 'deposit.failed':
+          await this.markPaymentSessionState({
+            sessionId: session.id,
+            nextStatus: 'FAILED',
+            eventType,
+            providerEventId,
+            payload: input.payload,
+            failureReason: this.getFailureReason(input.payload),
+          });
+          result = { sessionId: session.id, status: 'FAILED' };
           break;
 
         default:
@@ -349,6 +496,8 @@ export class PaymentsService {
       await this.prisma.paymentProviderEvent.update({
         where: { id: rowId },
         data: {
+          businessId: resolvedBusinessId,
+          bookingId: resolvedBookingId,
           processedAt: new Date(),
         },
       });
@@ -363,7 +512,12 @@ export class PaymentsService {
         result,
       };
     } catch (e) {
-      if (e instanceof BadRequestException || e instanceof ConflictException) {
+      if (
+        e instanceof BadRequestException ||
+        e instanceof ConflictException ||
+        e instanceof NotFoundException ||
+        e instanceof ForbiddenException
+      ) {
         await this.prisma.paymentProviderEvent.update({
           where: { id: rowId },
           data: {

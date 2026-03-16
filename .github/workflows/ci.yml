@@ -54,6 +54,7 @@ jobs:
       AUTH_CODE_PEPPER: ci_magic_pepper
       JWT_ACCESS_TTL_MIN: 15
       JWT_REFRESH_TTL_DAYS: 30
+      PAYMENT_WEBHOOK_SECRET: ci_payment_webhook_secret
 
     steps:
       - name: Checkout
@@ -101,7 +102,10 @@ jobs:
         run: |
           pnpm -C apps/api run gate:bookings
 
-          nohup pnpm -C apps/api start > /tmp/plantak_api_after_gate.log 2>&1 &
+          lsof -ti :3001 | xargs -r kill -9
+          sleep 2
+
+          nohup env PAYMENT_WEBHOOK_SECRET="$PAYMENT_WEBHOOK_SECRET" pnpm -C apps/api start > /tmp/plantak_api_after_gate.log 2>&1 &
           echo $! > /tmp/plantak_api_after_gate.pid
 
           for i in $(seq 1 40); do
