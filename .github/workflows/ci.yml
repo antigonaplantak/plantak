@@ -97,8 +97,30 @@ jobs:
       - name: Observability proof
         run: pnpm -C apps/api run ops:observability:proof
 
-      - name: Booking gate
-        run: pnpm -C apps/api run gate:bookings
+      - name: Booking gate + payments proof stack
+        run: |
+          pnpm -C apps/api run gate:bookings
+
+          nohup pnpm -C apps/api start > /tmp/plantak_api_after_gate.log 2>&1 &
+          echo $! > /tmp/plantak_api_after_gate.pid
+
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:3001/api/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS http://localhost:3001/api/health
+          pnpm -C apps/api run proof:payments:stack
+
+      - name: Stop API after payments proof stack
+        if: always()
+        run: |
+          if [ -f /tmp/plantak_api_after_gate.pid ]; then
+            kill "$(cat /tmp/plantak_api_after_gate.pid)" || true
+          fi
+          pkill -f "nest start|node dist/main|pnpm start" || true
 
   docker_build:
     name: Docker build (when Dockerfile exists)

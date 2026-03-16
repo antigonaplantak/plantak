@@ -2,11 +2,15 @@
 set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:3001/api}"
-BASE_DATE="${DATE_YMD:-2027-01-16}"
+BASE_DATE="${DATE_YMD:-$(date -u -d '+30 day' +%F)}"
 
 day() {
   date -u -d "$BASE_DATE + $1 day" +%F
 }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+API_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+cd "$API_DIR"
 
 echo "== PAYMENTS PROOF STACK =="
 echo "API_URL=$API_URL"
