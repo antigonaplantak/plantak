@@ -1267,11 +1267,7 @@ export class BookingsService {
         (b.paymentStatus === 'REMAINING_DUE_IN_SALON' ||
           b.paymentStatus === 'PAID')
       ) {
-        return {
-          id: b.id,
-          status: b.status,
-          paymentStatus: b.paymentStatus,
-        };
+        throw new ConflictException('Booking deposit already settled');
       }
 
       if (b.paymentStatus !== 'DEPOSIT_PENDING') {
