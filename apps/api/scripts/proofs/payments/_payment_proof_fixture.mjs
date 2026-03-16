@@ -11,7 +11,7 @@ export function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-export async function http(path, { method = 'GET', token, body } = {}) {
+export async function httpRaw(path, { method = 'GET', token, body } = {}) {
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
@@ -28,11 +28,22 @@ export async function http(path, { method = 'GET', token, body } = {}) {
     json = text ? JSON.parse(text) : null;
   } catch {}
 
-  if (!res.ok) {
-    throw new Error(`HTTP_${res.status} ${method} ${path} :: ${text}`);
-  }
+  return {
+    ok: res.ok,
+    status: res.status,
+    text,
+    json,
+  };
+}
 
-  return json;
+export async function http(path, opts = {}) {
+  const res = await httpRaw(path, opts);
+  if (!res.ok) {
+    throw new Error(
+      `HTTP_${res.status} ${opts.method ?? 'GET'} ${path} :: ${res.text}`,
+    );
+  }
+  return res.json;
 }
 
 export async function authOwner() {
@@ -40,6 +51,7 @@ export async function authOwner() {
     method: 'POST',
     body: { email: OWNER_EMAIL },
   });
+
   const code = magicReq?.devCode ?? magicReq?.code;
   assert(typeof code === 'string' && code.length > 0, 'MAGIC_CODE_NOT_FOUND');
 
@@ -63,6 +75,7 @@ export async function ensureDepositEnabledFixture() {
     where: { businessId: BUSINESS_ID, active: true },
     select: { id: true },
   });
+
   assert(staff?.id, 'ACTIVE_STAFF_NOT_FOUND');
 
   const proofServiceName = '__payment-proof-service__';
@@ -135,7 +148,12 @@ export async function ensureDepositEnabledFixture() {
   return { serviceId: service.id, staffId: staff.id };
 }
 
-export async function getFirstSlot({ businessId, serviceId, staffId, dateYmd }) {
+export async function getFirstSlot({
+  businessId,
+  serviceId,
+  staffId,
+  dateYmd,
+}) {
   const qs = new URLSearchParams({
     businessId,
     serviceId,
