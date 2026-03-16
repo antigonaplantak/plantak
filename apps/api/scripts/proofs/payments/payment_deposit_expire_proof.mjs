@@ -39,6 +39,21 @@ async function main() {
 
   assert(createSlot?.start, 'NO_SLOT_FOUND_BEFORE_CREATE');
 
+  const resolvedDateYmd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_NAME,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(createSlot.start));
+
+  const resolvedQs = new URLSearchParams({
+    businessId: BUSINESS_ID,
+    serviceId,
+    staffId,
+    date: resolvedDateYmd,
+    tz: TZ_NAME,
+  });
+
   const key = `payment-deposit-expire-proof-${Date.now()}`;
 
   const booking = await http('/bookings', {
@@ -62,7 +77,7 @@ async function main() {
   );
   assert(booking?.depositExpiresAt, 'DEPOSIT_EXPIRES_AT_MISSING');
 
-  const availabilityAfterCreate = await http(`/availability?${qs.toString()}`);
+  const availabilityAfterCreate = await http(`/availability?${resolvedQs.toString()}`);
   assert(
     !hasSlot(availabilityAfterCreate?.results, staffId, createSlot.start),
     'SLOT_STILL_VISIBLE_AFTER_CREATE',
@@ -178,7 +193,7 @@ async function main() {
 
   assert(txCount === 0, `UNEXPECTED_PAYMENT_TRANSACTION_COUNT_${txCount}`);
 
-  const availabilityAfterExpire = await http(`/availability?${qs.toString()}`);
+  const availabilityAfterExpire = await http(`/availability?${resolvedQs.toString()}`);
   assert(
     hasSlot(availabilityAfterExpire?.results, staffId, createSlot.start),
     'SLOT_NOT_REOPENED_AFTER_EXPIRE',
