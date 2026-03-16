@@ -11,7 +11,15 @@ export function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-export async function httpRaw(path, { method = 'GET', token, body } = {}) {
+export function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function httpRaw(
+  path,
+  { method = 'GET', token, body } = {},
+  attempt = 0,
+) {
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
@@ -28,6 +36,23 @@ export async function httpRaw(path, { method = 'GET', token, body } = {}) {
     json = text ? JSON.parse(text) : null;
   } catch {}
 
+  const upperMethod = String(method || 'GET').toUpperCase();
+  const isAvailabilityGet =
+    upperMethod === 'GET' && path.startsWith('/availability?');
+
+  if (res.status === 429 && isAvailabilityGet) {
+    const resetHeader = Number(res.headers.get('x-ratelimit-reset') || '0');
+    const waitMs =
+      Number.isFinite(resetHeader) && resetHeader > 0
+        ? (resetHeader + 1) * 1000
+        : Math.min(15000, 2000 * (attempt + 1));
+
+    if (attempt < 8) {
+      await sleep(waitMs);
+      return httpRaw(path, { method, token, body }, attempt + 1);
+    }
+  }
+
   return {
     ok: res.ok,
     status: res.status,
@@ -36,12 +61,25 @@ export async function httpRaw(path, { method = 'GET', token, body } = {}) {
   };
 }
 
-export async function http(path, opts = {}) {
+export async function http(path, opts = {}, attempt = 0) {
   const res = await httpRaw(path, opts);
+  const method = String(opts.method ?? 'GET').toUpperCase();
+
+  if (
+    res.status === 429 &&
+    method === 'GET' &&
+    path.startsWith('/availability?')
+  ) {
+    if (attempt >= 6) {
+      throw new Error(`HTTP_${res.status} ${method} ${path} :: ${res.text}`);
+    }
+
+    await sleep(1200 * (attempt + 1));
+    return http(path, opts, attempt + 1);
+  }
+
   if (!res.ok) {
-    throw new Error(
-      `HTTP_${res.status} ${opts.method ?? 'GET'} ${path} :: ${res.text}`,
-    );
+    throw new Error(`HTTP_${res.status} ${method} ${path} :: ${res.text}`);
   }
   return res.json;
 }
@@ -159,7 +197,7 @@ export async function getFirstSlot({
   serviceId,
   staffId,
   dateYmd,
-  searchDays = 14,
+  searchDays = 45,
 }) {
   for (let offset = 0; offset < searchDays; offset += 1) {
     const probeDate = addDays(dateYmd, offset);
