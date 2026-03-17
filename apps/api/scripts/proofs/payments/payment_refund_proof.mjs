@@ -96,12 +96,14 @@ async function main() {
     `SETTLE_UNEXPECTED_PAYMENT_STATUS_${settled?.paymentStatus}`,
   );
 
+  const refundKey = `${key}-payment-refund`;
+
   const refunded = await http(`/bookings/${booking.id}/payment-refund`, {
     method: 'POST',
     token,
     body: {
       businessId: BUSINESS_ID,
-      idempotencyKey: `${key}-payment-refund`,
+      idempotencyKey: refundKey,
     },
   });
 
@@ -112,6 +114,27 @@ async function main() {
   assert(
     refunded?.paymentStatus === 'REFUNDED',
     `REFUND_UNEXPECTED_PAYMENT_STATUS_${refunded?.paymentStatus}`,
+  );
+
+  const refundedReplay = await http(`/bookings/${booking.id}/payment-refund`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: refundKey,
+    },
+  });
+
+  assert(
+    refundedReplay?.id === refunded?.id &&
+      refundedReplay?.businessId === refunded?.businessId &&
+      refundedReplay?.staffId === refunded?.staffId &&
+      refundedReplay?.customerId === refunded?.customerId &&
+      refundedReplay?.status === refunded?.status &&
+      refundedReplay?.paymentStatus === refunded?.paymentStatus &&
+      refundedReplay?.startAt === refunded?.startAt &&
+      refundedReplay?.endAt === refunded?.endAt,
+    'REFUND_IDEMPOTENT_RESPONSE_MISMATCH',
   );
 
   const dbBooking = await prisma.booking.findUnique({
@@ -142,6 +165,14 @@ async function main() {
     },
   });
 
+  const refundedAgg = await prisma.paymentTransaction.aggregate({
+    _sum: { amountCents: true },
+    where: {
+      bookingId: booking.id,
+      transactionType: 'REFUND',
+    },
+  });
+
   assert(dbBooking, 'DB_BOOKING_NOT_FOUND_AFTER_REFUND');
   assert(dbBooking.status === 'CONFIRMED', `DB_STATUS_${dbBooking?.status}`);
   assert(
@@ -152,6 +183,10 @@ async function main() {
   assert(
     txs[0].amountCents === (dbBooking.amountTotalCentsSnapshot ?? 0),
     `REFUND_AMOUNT_MISMATCH_${txs[0].amountCents}_EXPECTED_${dbBooking.amountTotalCentsSnapshot ?? 0}`,
+  );
+  assert(
+    (refundedAgg._sum.amountCents ?? 0) === (dbBooking.amountTotalCentsSnapshot ?? 0),
+    `REFUND_AGG_MISMATCH_${refundedAgg._sum.amountCents ?? 0}_EXPECTED_${dbBooking.amountTotalCentsSnapshot ?? 0}`,
   );
 
   console.log(
