@@ -25,12 +25,8 @@
 - Wider gate:
 - Negative path:
 - Duplicate/replay path:
-- DB verification:
 
-## Done gate
-- Narrow diff: yes / no
-- Tree clean: yes / no
-- Proofs green: yes / no
-- CI green: yes / no
-- DB truth verified: yes / no
+## Final
+- Rollback understood: yes / no
+- Out of scope:
 - Real status: done / not done

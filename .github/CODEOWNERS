@@ -1,10 +1,10 @@
 # Default owner
-* @YOUR_GITHUB_USERNAME
+* @antigonaplantak
 
 # Critical domains
-/apps/api/src/payments/                 @YOUR_GITHUB_USERNAME
-/apps/api/scripts/proofs/payments/      @YOUR_GITHUB_USERNAME
-/apps/api/prisma/                       @YOUR_GITHUB_USERNAME
-/.github/workflows/                     @YOUR_GITHUB_USERNAME
-/apps/api/src/bookings/                 @YOUR_GITHUB_USERNAME
-/apps/api/src/auth/                     @YOUR_GITHUB_USERNAME
+/apps/api/src/payments/            @antigonaplantak
+/apps/api/scripts/proofs/payments/ @antigonaplantak
+/apps/api/prisma/                  @antigonaplantak
+/.github/workflows/                @antigonaplantak
+/apps/api/src/bookings/            @antigonaplantak
+/apps/api/src/auth/                @antigonaplantak
