@@ -50,7 +50,8 @@
     "ops:queue:alerts": "node scripts/ops_queue_alerts.mjs",
     "ops:seed:booking-gate": "node scripts/ops_seed_booking_gate.mjs",
     "proof:availability:enterprise": "bash scripts/availability_enterprise_proof.sh",
-    "proof:payments:stack": "bash scripts/proofs/payments/payment_stack_proof.sh"
+    "proof:payments:stack": "bash scripts/proofs/payments/payment_stack_proof.sh",
+    "proof:services:stack": "bash scripts/proofs/services/service_stack_gate.sh"
   },
   "dependencies": {
     "@bull-board/api": "^6.20.3",

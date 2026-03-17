@@ -92,6 +92,8 @@ jobs:
       - name: Build
         run: pnpm -C apps/api run build
 
+      - name: Service stack gate
+        run: pnpm -C apps/api run proof:services:stack
       - name: Queue alerts
         run: pnpm -C apps/api run ops:queue:alerts
 
