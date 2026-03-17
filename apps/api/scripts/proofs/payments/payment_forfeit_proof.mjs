@@ -87,12 +87,14 @@ async function main() {
     `CANCEL_UNEXPECTED_STATUS_${cancelled?.status}`,
   );
 
+  const forfeitKey = `${key}-payment-forfeit`;
+
   const forfeited = await http(`/bookings/${booking.id}/payment-forfeit`, {
     method: 'POST',
     token,
     body: {
       businessId: BUSINESS_ID,
-      idempotencyKey: `${key}-payment-forfeit`,
+      idempotencyKey: forfeitKey,
     },
   });
 
@@ -103,6 +105,27 @@ async function main() {
   assert(
     forfeited?.paymentStatus === 'DEPOSIT_FORFEITED',
     `FORFEIT_UNEXPECTED_PAYMENT_STATUS_${forfeited?.paymentStatus}`,
+  );
+
+  const forfeitedReplay = await http(`/bookings/${booking.id}/payment-forfeit`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: forfeitKey,
+    },
+  });
+
+  assert(
+    forfeitedReplay?.id === forfeited?.id &&
+      forfeitedReplay?.businessId === forfeited?.businessId &&
+      forfeitedReplay?.staffId === forfeited?.staffId &&
+      forfeitedReplay?.customerId === forfeited?.customerId &&
+      forfeitedReplay?.status === forfeited?.status &&
+      forfeitedReplay?.paymentStatus === forfeited?.paymentStatus &&
+      forfeitedReplay?.startAt === forfeited?.startAt &&
+      forfeitedReplay?.endAt === forfeited?.endAt,
+    'FORFEIT_IDEMPOTENT_RESPONSE_MISMATCH',
   );
 
   const dbBooking = await prisma.booking.findUnique({
@@ -131,6 +154,14 @@ async function main() {
     },
   });
 
+  const forfeitedAgg = await prisma.paymentTransaction.aggregate({
+    _sum: { amountCents: true },
+    where: {
+      bookingId: booking.id,
+      transactionType: 'DEPOSIT_FORFEIT',
+    },
+  });
+
   assert(dbBooking, 'DB_BOOKING_NOT_FOUND_AFTER_FORFEIT');
   assert(dbBooking.status === 'CANCELLED', `DB_STATUS_${dbBooking?.status}`);
   assert(
@@ -141,6 +172,10 @@ async function main() {
   assert(
     txs[0].amountCents === (dbBooking.amountDepositCentsSnapshot ?? 0),
     `DEPOSIT_FORFEIT_AMOUNT_MISMATCH_${txs[0].amountCents}_EXPECTED_${dbBooking.amountDepositCentsSnapshot ?? 0}`,
+  );
+  assert(
+    (forfeitedAgg._sum.amountCents ?? 0) === (dbBooking.amountDepositCentsSnapshot ?? 0),
+    `DEPOSIT_FORFEIT_AGG_MISMATCH_${forfeitedAgg._sum.amountCents ?? 0}_EXPECTED_${dbBooking.amountDepositCentsSnapshot ?? 0}`,
   );
 
   console.log(JSON.stringify({
