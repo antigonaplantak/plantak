@@ -31,11 +31,23 @@ function sleep(ms) {
 }
 
 async function http(path, init = {}, attempt = 0) {
+  const { token, headers: initHeaders = {}, body: initBody, ...fetchInit } = init;
+
+  const body =
+    initBody === undefined
+      ? undefined
+      : typeof initBody === 'string'
+        ? initBody
+        : JSON.stringify(initBody);
+
   const res = await fetch(`${API_URL}${path}`, {
-    ...init,
+    ...fetchInit,
+    ...(body === undefined ? {} : { body }),
     headers: {
-      'content-type': 'application/json',
-      ...(init.headers || {}),
+      Accept: 'application/json',
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...initHeaders,
     },
   });
 
@@ -120,7 +132,7 @@ function extractSessionCreateJson(stdout) {
 async function createOpenPaymentSession(dateYmd, label) {
   const run = spawnSync(
     'node',
-    ['scripts/proofs/payments/payment_session_create_proof.mjs'],
+    ['apps/api/scripts/proofs/payments/payment_session_create_proof.mjs'],
     {
       cwd: process.cwd(),
       env: { ...process.env, API_URL, DATE_YMD: dateYmd },
@@ -134,7 +146,7 @@ async function createOpenPaymentSession(dateYmd, label) {
   );
 
   const data = extractSessionCreateJson(run.stdout);
-  const providerSessionRef = `${label}-provider-session-ref`;
+  const providerSessionRef = `${label}-provider-session-ref-${data.bookingId ?? data.sessionId}`;
 
   await prisma.paymentSession.update({
     where: { id: data.sessionId },
@@ -233,7 +245,7 @@ async function webhook(body, providerEventId, eventType) {
 async function provePaidReconcile(token) {
   const label = 'provider-reconcile-paid';
   const seed = await createOpenPaymentSession(day(0), label);
-  const providerEventId = `${label}-event`;
+  const providerEventId = `${label}-event-${seed.bookingId}`;
   const payload = {
     businessId: BUSINESS_ID,
     bookingId: seed.bookingId,
@@ -319,7 +331,7 @@ async function provePaidReconcile(token) {
 async function proveCancelledReconcile(token) {
   const label = 'provider-reconcile-cancelled';
   const seed = await createOpenPaymentSession(day(1), label);
-  const providerEventId = `${label}-event`;
+  const providerEventId = `${label}-event-${seed.bookingId}`;
 
   const cancelledRes = await reconcile(token, {
     businessId: BUSINESS_ID,
@@ -354,7 +366,7 @@ async function proveCancelledReconcile(token) {
 async function proveFailedReconcile(token) {
   const label = 'provider-reconcile-failed';
   const seed = await createOpenPaymentSession(day(2), label);
-  const providerEventId = `${label}-event`;
+  const providerEventId = `${label}-event-${seed.bookingId}`;
 
   const failedRes = await reconcile(token, {
     businessId: BUSINESS_ID,
@@ -390,7 +402,19 @@ async function proveFailedReconcile(token) {
 async function proveExpiredReconcile(token) {
   const label = 'provider-reconcile-expired';
   const seed = await createOpenPaymentSession(day(3), label);
-  const providerEventId = `${label}-event`;
+  const providerEventId = `${label}-event-${seed.bookingId}`;
+
+  const expiredAt = new Date(Date.now() - 60_000);
+
+  await prisma.booking.update({
+    where: { id: seed.bookingId },
+    data: { depositExpiresAt: expiredAt },
+  });
+
+  await prisma.paymentSession.update({
+    where: { id: seed.sessionId },
+    data: { expiresAt: expiredAt },
+  });
 
   const expiredRes = await reconcile(token, {
     businessId: BUSINESS_ID,
