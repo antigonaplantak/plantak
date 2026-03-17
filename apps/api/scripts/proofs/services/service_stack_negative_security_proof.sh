@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API="${API_URL:-http://localhost:3101/api}"
+API="${API_URL:-http://localhost:${PORT:-3001}/api}"
 BUSINESS_ID="${BUSINESS_ID:-b1}"
 STAFF_ID="${STAFF_ID:-b9b77322-1012-4860-af1b-5b53a6171d06}"
 BASE_DATE="${DATE_YMD:-2026-07-07}"
