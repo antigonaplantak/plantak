@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -15,6 +16,10 @@ const BUSINESS_ID = 'b1';
 const PROVIDER = 'stub';
 const PAYMENT_WEBHOOK_SECRET =
   process.env.PAYMENT_WEBHOOK_SECRET ?? 'dev_payment_webhook_secret';
+
+const SESSION_CREATE_PROOF_PATH = fileURLToPath(
+  new URL('./payment_session_create_proof.mjs', import.meta.url),
+);
 
 function day(offset) {
   const base = new Date(`${BASE_DATE}T00:00:00.000Z`);
@@ -132,7 +137,7 @@ function extractSessionCreateJson(stdout) {
 async function createOpenPaymentSession(dateYmd, label) {
   const run = spawnSync(
     'node',
-    ['apps/api/scripts/proofs/payments/payment_session_create_proof.mjs'],
+    [SESSION_CREATE_PROOF_PATH],
     {
       cwd: process.cwd(),
       env: { ...process.env, API_URL, DATE_YMD: dateYmd },
