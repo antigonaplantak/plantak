@@ -8,12 +8,10 @@ set -a
 [ -f .env.local ] && . ./.env.local
 set +a
 
-API="${API_URL:-http://localhost:3101/api}"
+API="${API_URL:-http://localhost:${PORT:-3001}/api}"
 BUSINESS_ID="${BUSINESS_ID:-b1}"
 STAFF_ID="${STAFF_ID:-b9b77322-1012-4860-af1b-5b53a6171d06}"
-DATE_YMD="${DATE_YMD:-2026-07-07}"
-START_AT="${START_AT:-2026-07-07T10:00:00.000Z}"
-NEW_START_AT="${NEW_START_AT:-2026-07-07T12:00:00.000Z}"
+BASE_DATE="${DATE_YMD:-2026-07-07}"
 
 json_get() {
   local path="$1"
@@ -37,6 +35,58 @@ else process.stdout.write(String(cur));
 NODE
 }
 
+slot_at() {
+  local idx="$1"
+  local raw
+  raw="$(cat)"
+  JSON_INPUT="$raw" IDX="$idx" node <<'NODE'
+const data = JSON.parse(process.env.JSON_INPUT || '{}');
+const idx = Number(process.env.IDX || '0');
+const slot = data.results?.[0]?.slots?.[idx]?.start ?? '';
+process.stdout.write(slot);
+NODE
+}
+
+add_minutes_utc() {
+  local iso="$1"
+  local mins="$2"
+  ISO="$iso" MINS="$mins" node <<'NODE'
+const iso = process.env.ISO;
+const mins = Number(process.env.MINS || '0');
+const d = new Date(iso);
+if (Number.isNaN(d.getTime())) process.exit(1);
+d.setUTCMinutes(d.getUTCMinutes() + mins);
+process.stdout.write(d.toISOString());
+NODE
+}
+
+availability_with_retry() {
+  local url="$1"
+  local attempt=1
+  local max=5
+  local body=""
+  while [ "$attempt" -le "$max" ]; do
+    local tmp code
+    tmp="$(mktemp)"
+    code="$(curl -sS -o "$tmp" -w "%{http_code}" "$url")"
+    body="$(cat "$tmp")"
+    rm -f "$tmp"
+    if [ "$code" = "200" ]; then
+      printf '%s' "$body"
+      return 0
+    fi
+    if [ "$code" != "429" ]; then
+      echo "$body"
+      echo "AVAILABILITY_HTTP_$code"
+      return 1
+    fi
+    sleep "$attempt"
+    attempt=$((attempt + 1))
+  done
+  echo "AVAILABILITY_RATE_LIMITED_429"
+  return 1
+}
+
 assert_eq() {
   local actual="$1"
   local expected="$2"
@@ -45,18 +95,6 @@ assert_eq() {
     exit 1
   fi
   echo "ASSERT_EQ_OK $expected"
-}
-
-assert_slot_present() {
-  local json="$1"
-  local target="$2"
-  JSON_INPUT="$json" TARGET="$target" node <<'NODE'
-const data = JSON.parse(process.env.JSON_INPUT || '{}');
-const target = process.env.TARGET;
-const slots = (data.results?.[0]?.slots ?? []).map((x) => x.start);
-if (!slots.includes(target)) process.exit(1);
-NODE
-  echo "SLOT_PRESENT_OK $target"
 }
 
 echo "== HEALTH =="
@@ -181,10 +219,31 @@ printf '%s\n' "$ASSIGN_RES" >/dev/null
 echo STAFF_ASSIGNMENT_OK
 
 echo
-echo "== AVAILABILITY BEFORE CREATE =="
-AVAIL_BEFORE="$(curl -fsS "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&variantId=$VARIANT_ID&addonIds=$ADDON_ID&staffId=$STAFF_ID&date=$DATE_YMD&tz=Europe/Paris")"
+echo "== PICK AVAILABLE DAY + SLOTS =="
+PICKED_DATE=""
+START_AT=""
+NEW_START_AT=""
+AVAIL_BEFORE=""
+for offset in $(seq 0 14); do
+  DAY="$(date -u -d "$BASE_DATE +$offset day" +%F)"
+  AVAIL="$(availability_with_retry "$API/availability?businessId=$BUSINESS_ID&serviceId=$SERVICE_ID&variantId=$VARIANT_ID&addonIds=$ADDON_ID&staffId=$STAFF_ID&date=$DAY&tz=Europe/Paris")"
+  SLOT1="$(printf '%s' "$AVAIL" | slot_at 0)"
+  SLOT2="$(printf '%s' "$AVAIL" | slot_at 1)"
+  if [ -n "$SLOT1" ] && [ -n "$SLOT2" ]; then
+    PICKED_DATE="$DAY"
+    START_AT="$SLOT1"
+    NEW_START_AT="$SLOT2"
+    AVAIL_BEFORE="$AVAIL"
+    break
+  fi
+done
+
+[ -n "$PICKED_DATE" ] || { echo "NO_SLOT_FOUND_IN_15D_WINDOW"; exit 1; }
 printf '%s\n' "$AVAIL_BEFORE"
-assert_slot_present "$AVAIL_BEFORE" "$START_AT"
+echo "DATE_YMD=$PICKED_DATE"
+echo "START_AT=$START_AT"
+echo "NEW_START_AT=$NEW_START_AT"
+
 TOTAL_MIN_BEFORE="$(printf '%s' "$AVAIL_BEFORE" | json_get 'results.0.totalMin')"
 assert_eq "$TOTAL_MIN_BEFORE" "95"
 
@@ -209,10 +268,11 @@ CREATE_TOTAL="$(printf '%s' "$CREATE_RES" | json_get totalMinSnapshot)"
 CREATE_VARIANT="$(printf '%s' "$CREATE_RES" | json_get serviceVariantId)"
 CREATE_SERVICE_NAME="$(printf '%s' "$CREATE_RES" | json_get serviceNameSnapshot)"
 CREATE_PRICE="$(printf '%s' "$CREATE_RES" | json_get priceCentsSnapshot)"
+EXPECTED_CREATE_END="$(add_minutes_utc "$START_AT" "95")"
 
 assert_eq "$CREATE_VARIANT" "$VARIANT_ID"
 assert_eq "$CREATE_TOTAL" "95"
-assert_eq "$CREATE_END" "${DATE_YMD}T11:35:00.000Z"
+assert_eq "$CREATE_END" "$EXPECTED_CREATE_END"
 assert_eq "$CREATE_SERVICE_NAME" "contract-hot-path-$UNIQ"
 assert_eq "$CREATE_PRICE" "7500"
 
@@ -255,14 +315,18 @@ printf '%s\n' "$RESCHEDULE_RES"
 
 RESCHEDULE_END="$(printf '%s' "$RESCHEDULE_RES" | json_get endAt)"
 RESCHEDULE_TOTAL="$(printf '%s' "$RESCHEDULE_RES" | json_get totalMinSnapshot)"
+EXPECTED_RESCHEDULE_END="$(add_minutes_utc "$NEW_START_AT" "95")"
 assert_eq "$RESCHEDULE_TOTAL" "95"
-assert_eq "$RESCHEDULE_END" "${DATE_YMD}T13:35:00.000Z"
+assert_eq "$RESCHEDULE_END" "$EXPECTED_RESCHEDULE_END"
 
 echo
 echo "== CLEANUP TEMP SERVICE =="
-curl -fsS -X DELETE "$API/services/$SERVICE_ID" \
-  -H "authorization: Bearer $TOKEN" >/dev/null
+ARCHIVE_RES="$(curl -fsS -X PATCH "$API/services/$SERVICE_ID" \
+  -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"active":false,"onlineBookingEnabled":false}')"
+printf '%s\n' "$ARCHIVE_RES" >/dev/null
 echo TEMP_SERVICE_ARCHIVED_OK
 
 echo
-echo SERVICE_STACK_HOT_PATH_SMOKE_OK
+echo "SERVICE_STACK_HOT_PATH_SMOKE_OK"

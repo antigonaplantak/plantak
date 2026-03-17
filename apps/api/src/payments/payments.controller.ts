@@ -11,8 +11,11 @@ import {
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { BusinessRoles } from '../common/auth/business-roles.decorator';
+import { BusinessRolesGuard } from '../common/auth/business-roles.guard';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
+import { ReconcileProviderPaymentDto } from './dto/reconcile-provider-payment.dto';
 
 type ReqUser = { sub: string; email: string; role?: string };
 type ReqWithUser = Request & { user?: ReqUser };
@@ -40,6 +43,23 @@ export class PaymentsController {
       idempotencyKey: dto.idempotencyKey,
       returnUrl: dto.returnUrl,
       cancelUrl: dto.cancelUrl,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, BusinessRolesGuard)
+  @ApiBearerAuth()
+  @BusinessRoles('OWNER', 'ADMIN', 'STAFF')
+  @Post('provider/reconcile')
+  @HttpCode(200)
+  async reconcileProviderPayment(@Body() dto: ReconcileProviderPaymentDto) {
+    return this.payments.reconcileProviderEvent({
+      businessId: dto.businessId,
+      bookingId: dto.bookingId,
+      provider: dto.provider,
+      providerEventId: dto.providerEventId,
+      eventType: dto.eventType,
+      providerSessionRef: dto.providerSessionRef,
+      payload: dto.payload ?? {},
     });
   }
 
