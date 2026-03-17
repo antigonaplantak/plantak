@@ -92,8 +92,28 @@ jobs:
       - name: Build
         run: pnpm -C apps/api run build
 
+      - name: Start API for service stack gate
+        run: |
+          pnpm -C apps/api start:dev > /tmp/plantak_api_service_stack.log 2>&1 &
+          echo $! > /tmp/plantak_api_service_stack.pid
+          for i in {1..60}; do
+            curl -fsS http://localhost:3001/api/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/plantak_api_service_stack.log
+          exit 1
+
       - name: Service stack gate
+        env:
+          API_URL: http://localhost:3001/api
         run: pnpm -C apps/api run proof:services:stack
+
+      - name: Stop API after service stack gate
+        if: always()
+        run: |
+          if [ -f /tmp/plantak_api_service_stack.pid ]; then
+            kill "$(cat /tmp/plantak_api_service_stack.pid)" || true
+          fi
       - name: Queue alerts
         run: pnpm -C apps/api run ops:queue:alerts
 
