@@ -6,6 +6,7 @@ on:
       - "apps/api/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/bookings-gate.yml"
+      - ".github/workflows/ci.yml"
   push:
     branches:
       - main
@@ -16,6 +17,7 @@ on:
       - "apps/api/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/bookings-gate.yml"
+      - ".github/workflows/ci.yml"
 
 jobs:
   bookings-gate:
