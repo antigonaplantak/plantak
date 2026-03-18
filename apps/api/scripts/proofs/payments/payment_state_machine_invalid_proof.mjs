@@ -334,6 +334,39 @@ async function main() {
 
   const paidDb = await readBooking(paidBooking.id);
   assert(paidDb, 'PAID_DB_BOOKING_NOT_FOUND');
+  assert(paidDb.status === 'CONFIRMED', `PAID_DB_STATUS_${paidDb?.status}`);
+  assert(
+    paidDb.paymentStatus === 'PAID',
+    `PAID_DB_PAYMENT_STATUS_${paidDb?.paymentStatus}`,
+  );
+
+  await expectHttpStatus(
+    `/bookings/${paidBooking.id}/payment-waive`,
+    {
+      method: 'POST',
+      token,
+      body: {
+        businessId: BUSINESS_ID,
+        idempotencyKey: `${key}-paid-waive-invalid`,
+      },
+    },
+    409,
+    'PAID_WAIVE_INVALID',
+  );
+
+  await expectHttpStatus(
+    `/bookings/${paidBooking.id}/payment-forfeit`,
+    {
+      method: 'POST',
+      token,
+      body: {
+        businessId: BUSINESS_ID,
+        idempotencyKey: `${key}-paid-forfeit-invalid`,
+      },
+    },
+    409,
+    'PAID_FORFEIT_INVALID',
+  );
 
   await expectHttpStatus(
     `/bookings/${paidBooking.id}/payment-refund-partial`,
@@ -350,13 +383,15 @@ async function main() {
     'PAID_PARTIAL_REFUND_FULL_INVALID',
   );
 
-  const paidPartialRefundTxCount = await countPaymentTx(paidBooking.id, [
+  const paidInvalidTxCount = await countPaymentTx(paidBooking.id, [
+    'DEPOSIT_WAIVE',
+    'DEPOSIT_FORFEIT',
     'PARTIAL_REFUND',
   ]);
 
   assert(
-    paidPartialRefundTxCount === 0,
-    `PAID_PARTIAL_REFUND_TX_COUNT_${paidPartialRefundTxCount}`,
+    paidInvalidTxCount === 0,
+    `PAID_INVALID_TX_COUNT_${paidInvalidTxCount}`,
   );
 
   console.log(
@@ -367,7 +402,7 @@ async function main() {
         paidBookingId: paidBooking.id,
         pendingInvalidTxCount,
         confirmedInvalidTxCount,
-        paidPartialRefundTxCount,
+        paidInvalidTxCount,
       },
       null,
       2,
