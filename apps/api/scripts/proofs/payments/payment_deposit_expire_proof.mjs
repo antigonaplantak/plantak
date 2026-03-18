@@ -187,11 +187,51 @@ async function main() {
     `DB_DEPOSIT_EXPIRES_AT_AFTER_EXPIRE_${dbBooking?.depositExpiresAt}`,
   );
 
+  const confirmAfterExpire = await httpRaw(`/bookings/${booking.id}/confirm`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: `${key}-confirm-after-expire-invalid`,
+    },
+  });
+
+  assert(
+    confirmAfterExpire.status === 400,
+    `CONFIRM_AFTER_EXPIRE_EXPECTED_400_GOT_${confirmAfterExpire.status}_BODY_${confirmAfterExpire.text}`,
+  );
+
+  const depositPaidAfterExpire = await httpRaw(`/bookings/${booking.id}/deposit-paid`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: `${key}-deposit-paid-after-expire-invalid`,
+    },
+  });
+
+  assert(
+    depositPaidAfterExpire.status === 400,
+    `DEPOSIT_PAID_AFTER_EXPIRE_EXPECTED_400_GOT_${depositPaidAfterExpire.status}_BODY_${depositPaidAfterExpire.text}`,
+  );
+
   const txCount = await prisma.paymentTransaction.count({
     where: { bookingId: booking.id },
   });
 
   assert(txCount === 0, `UNEXPECTED_PAYMENT_TRANSACTION_COUNT_${txCount}`);
+
+  const cancelHistoryCount = await prisma.bookingHistory.count({
+    where: {
+      bookingId: booking.id,
+      action: 'CANCEL',
+    },
+  });
+
+  assert(
+    cancelHistoryCount === 1,
+    `DEPOSIT_EXPIRE_CANCEL_HISTORY_COUNT_${cancelHistoryCount}`,
+  );
 
   const availabilityAfterExpire = await http(`/availability?${resolvedQs.toString()}`);
   assert(
