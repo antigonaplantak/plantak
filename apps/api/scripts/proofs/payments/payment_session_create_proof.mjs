@@ -3,6 +3,7 @@ import {
   BUSINESS_ID,
   assert,
   http,
+  httpRaw,
   authOwner,
   ensureDepositEnabledFixture,
   getFirstSlot,
@@ -19,6 +20,8 @@ async function main() {
     staffId,
     dateYmd: DATE_YMD,
   });
+
+  assert(slot?.start, 'NO_SLOT_FOUND_FOR_SESSION_CREATE');
 
   const key = `payment-session-proof-${Date.now()}`;
 
@@ -56,6 +59,7 @@ async function main() {
     (booking?.amountRemainingCentsSnapshot ?? 0) === 3500,
     `CREATE_REMAINING_AMOUNT_${booking?.amountRemainingCentsSnapshot}`,
   );
+  assert(booking?.depositExpiresAt, 'CREATE_DEPOSIT_EXPIRES_AT_MISSING');
 
   const first = await http(`/payments/bookings/${booking.id}/session`, {
     method: 'POST',
@@ -82,6 +86,14 @@ async function main() {
   assert(
     first?.amountCents === booking.amountDepositCentsSnapshot,
     `SESSION_AMOUNT_${first?.amountCents}_EXPECTED_${booking.amountDepositCentsSnapshot}`,
+  );
+  assert(
+    first?.returnUrl === 'https://example.test/return',
+    `SESSION_RETURN_URL_${first?.returnUrl}`,
+  );
+  assert(
+    first?.cancelUrl === 'https://example.test/cancel',
+    `SESSION_CANCEL_URL_${first?.cancelUrl}`,
   );
 
   const replaySameKey = await http(`/payments/bookings/${booking.id}/session`, {
@@ -125,6 +137,8 @@ async function main() {
       amountCents: true,
       currency: true,
       idempotencyKey: true,
+      returnUrl: true,
+      cancelUrl: true,
       expiresAt: true,
     },
   });
@@ -147,6 +161,83 @@ async function main() {
   assert(
     dbSession.idempotencyKey === `${key}-session`,
     `DB_SESSION_IDEMPOTENCY_${dbSession?.idempotencyKey}`,
+  );
+  assert(
+    dbSession.returnUrl === 'https://example.test/return',
+    `DB_SESSION_RETURN_URL_${dbSession?.returnUrl}`,
+  );
+  assert(
+    dbSession.cancelUrl === 'https://example.test/cancel',
+    `DB_SESSION_CANCEL_URL_${dbSession?.cancelUrl}`,
+  );
+  assert(
+    new Date(dbSession.expiresAt).getTime() === new Date(booking.depositExpiresAt).getTime(),
+    `DB_SESSION_EXPIRES_AT_${dbSession?.expiresAt}_EXPECTED_${booking?.depositExpiresAt}`,
+  );
+
+  const bookingSessionCount = await prisma.paymentSession.count({
+    where: { bookingId: booking.id },
+  });
+
+  assert(
+    bookingSessionCount === 1,
+    `BOOKING_SESSION_COUNT_${bookingSessionCount}`,
+  );
+
+  const secondSlot = await getFirstSlot({
+    businessId: BUSINESS_ID,
+    serviceId,
+    staffId,
+    dateYmd: DATE_YMD,
+  });
+
+  assert(secondSlot?.start, 'NO_SECOND_SLOT_FOUND_FOR_SESSION_CREATE');
+
+  const secondBooking = await http('/bookings', {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      serviceId,
+      staffId,
+      customerId: userId,
+      startAt: secondSlot.start,
+      idempotencyKey: `${key}-create-second`,
+    },
+  });
+
+  assert(secondBooking?.id, 'SECOND_BOOKING_CREATE_FAILED');
+
+  const reusedKeyDifferentBooking = await httpRaw(
+    `/payments/bookings/${secondBooking.id}/session`,
+    {
+      method: 'POST',
+      token,
+      body: {
+        businessId: BUSINESS_ID,
+        idempotencyKey: `${key}-session`,
+      },
+    },
+  );
+
+  assert(
+    reusedKeyDifferentBooking.status === 409,
+    `SESSION_KEY_REUSE_EXPECTED_409_GOT_${reusedKeyDifferentBooking.status}_BODY_${reusedKeyDifferentBooking.text}`,
+  );
+  assert(
+    reusedKeyDifferentBooking.text.includes(
+      'Idempotency key already used for different payment session',
+    ),
+    `SESSION_KEY_REUSE_MESSAGE_${reusedKeyDifferentBooking.text}`,
+  );
+
+  const secondBookingSessionCount = await prisma.paymentSession.count({
+    where: { bookingId: secondBooking.id },
+  });
+
+  assert(
+    secondBookingSessionCount === 0,
+    `SECOND_BOOKING_SESSION_COUNT_${secondBookingSessionCount}`,
   );
 
   console.log(
