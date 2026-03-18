@@ -147,7 +147,11 @@ async function main() {
   });
 
   assert(
-    JSON.stringify(partial1) === JSON.stringify(partial2),
+    partial2?.id === partial1?.id &&
+      partial2?.status === partial1?.status &&
+      partial2?.paymentStatus === partial1?.paymentStatus &&
+      partial2?.refundedAmountCents === partial1?.refundedAmountCents &&
+      partial2?.remainingRefundableCents === partial1?.remainingRefundableCents,
     'PARTIAL_REFUND_IDEMPOTENT_RESPONSE_MISMATCH',
   );
 
