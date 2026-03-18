@@ -20,6 +20,8 @@ async function main() {
     dateYmd: DATE_YMD,
   });
 
+  assert(slot?.start, 'NO_SLOT_FOUND_FOR_REFUND');
+
   const key = `payment-refund-proof-${Date.now()}`;
 
   const booking = await http('/bookings', {
@@ -77,6 +79,29 @@ async function main() {
     beforeRefund.paymentStatus === 'REMAINING_DUE_IN_SALON',
     `DB_PAYMENT_STATUS_BEFORE_REFUND_${beforeRefund?.paymentStatus}`,
   );
+  assert(
+    (beforeRefund.amountDepositCentsSnapshot ?? 0) > 0,
+    `DB_DEPOSIT_AMOUNT_BEFORE_REFUND_${beforeRefund?.amountDepositCentsSnapshot}`,
+  );
+  assert(
+    (beforeRefund.amountRemainingCentsSnapshot ?? 0) > 0,
+    `DB_REMAINING_AMOUNT_BEFORE_REFUND_${beforeRefund?.amountRemainingCentsSnapshot}`,
+  );
+  assert(
+    (beforeRefund.amountTotalCentsSnapshot ?? 0) ===
+      (beforeRefund.amountDepositCentsSnapshot ?? 0) +
+        (beforeRefund.amountRemainingCentsSnapshot ?? 0),
+    `DB_TOTAL_MISMATCH_BEFORE_REFUND_${beforeRefund?.amountTotalCentsSnapshot}`,
+  );
+
+  const refundTxCountBefore = await prisma.paymentTransaction.count({
+    where: {
+      bookingId: booking.id,
+      transactionType: 'REFUND',
+    },
+  });
+
+  assert(refundTxCountBefore === 0, `REFUND_TX_COUNT_BEFORE_${refundTxCountBefore}`);
 
   const settled = await http(`/bookings/${booking.id}/payment-settle`, {
     method: 'POST',
@@ -137,6 +162,28 @@ async function main() {
     'REFUND_IDEMPOTENT_RESPONSE_MISMATCH',
   );
 
+  const refundedOtherKey = await http(`/bookings/${booking.id}/payment-refund`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: `${refundKey}-other`,
+    },
+  });
+
+  assert(
+    refundedOtherKey?.id === refunded?.id,
+    `REFUND_OTHER_KEY_ID_${refundedOtherKey?.id}_EXPECTED_${refunded?.id}`,
+  );
+  assert(
+    refundedOtherKey?.status === 'CONFIRMED',
+    `REFUND_OTHER_KEY_STATUS_${refundedOtherKey?.status}`,
+  );
+  assert(
+    refundedOtherKey?.paymentStatus === 'REFUNDED',
+    `REFUND_OTHER_KEY_PAYMENT_STATUS_${refundedOtherKey?.paymentStatus}`,
+  );
+
   const dbBooking = await prisma.booking.findUnique({
     where: { id: booking.id },
     select: {
@@ -165,6 +212,21 @@ async function main() {
     },
   });
 
+  const refundHistoryRows = await prisma.bookingHistory.findMany({
+    where: {
+      bookingId: booking.id,
+      action: 'PAYMENT_REFUNDED',
+    },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      action: true,
+      actorUserId: true,
+      actorRole: true,
+      status: true,
+    },
+  });
+
   const refundedAgg = await prisma.paymentTransaction.aggregate({
     _sum: { amountCents: true },
     where: {
@@ -181,8 +243,32 @@ async function main() {
   );
   assert(txs.length === 1, `REFUND_TX_COUNT_${txs.length}`);
   assert(
+    txs[0].transactionType === 'REFUND',
+    `REFUND_TX_TYPE_${txs[0].transactionType}`,
+  );
+  assert(
+    txs[0].currency === 'EUR',
+    `REFUND_TX_CURRENCY_${txs[0].currency}`,
+  );
+  assert(
+    txs[0].actorRole === 'OWNER',
+    `REFUND_TX_ACTOR_ROLE_${txs[0].actorRole}`,
+  );
+  assert(
     txs[0].amountCents === (dbBooking.amountTotalCentsSnapshot ?? 0),
     `REFUND_AMOUNT_MISMATCH_${txs[0].amountCents}_EXPECTED_${dbBooking.amountTotalCentsSnapshot ?? 0}`,
+  );
+  assert(
+    refundHistoryRows.length === 1,
+    `REFUND_HISTORY_COUNT_${refundHistoryRows.length}`,
+  );
+  assert(
+    refundHistoryRows[0].action === 'PAYMENT_REFUNDED',
+    `REFUND_HISTORY_ACTION_${refundHistoryRows[0].action}`,
+  );
+  assert(
+    refundHistoryRows[0].actorRole === 'OWNER',
+    `REFUND_HISTORY_ACTOR_ROLE_${refundHistoryRows[0].actorRole}`,
   );
   assert(
     (refundedAgg._sum.amountCents ?? 0) === (dbBooking.amountTotalCentsSnapshot ?? 0),
