@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+const require = createRequire(import.meta.url);
+
+const {
+  DEFAULT_PAYMENT_PROVIDER: PROVIDER,
+  PAYMENT_PROVIDER_EVENT,
+} = require('../../../dist/payments/payment-provider-contract.js');
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001/api';
 const BASE_DATE =
@@ -13,7 +20,6 @@ const BASE_DATE =
 
 const OWNER_EMAIL = 'owner@example.com';
 const BUSINESS_ID = 'b1';
-const PROVIDER = 'stub';
 const PAYMENT_WEBHOOK_SECRET =
   process.env.PAYMENT_WEBHOOK_SECRET ?? 'dev_payment_webhook_secret';
 
@@ -192,11 +198,11 @@ async function getSession(id) {
   });
 }
 
-async function getEvent(providerEventId) {
+async function getEvent(providerEventId, provider = PROVIDER) {
   return prisma.paymentProviderEvent.findUnique({
     where: {
       provider_providerEventId: {
-        provider: PROVIDER,
+        provider,
         providerEventId,
       },
     },
@@ -211,10 +217,10 @@ async function getEvent(providerEventId) {
   });
 }
 
-async function countEvents(providerEventId) {
+async function countEvents(providerEventId, provider = PROVIDER) {
   return prisma.paymentProviderEvent.count({
     where: {
-      provider: PROVIDER,
+      provider,
       providerEventId,
     },
   });
@@ -264,7 +270,7 @@ async function provePaidReconcile(token) {
     provider: PROVIDER,
     providerEventId,
     providerSessionRef: seed.providerSessionRef,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload,
   });
 
@@ -297,7 +303,7 @@ async function provePaidReconcile(token) {
     provider: PROVIDER,
     providerEventId,
     providerSessionRef: seed.providerSessionRef,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload,
   });
 
@@ -314,7 +320,7 @@ async function provePaidReconcile(token) {
   const lateWebhookRes = await webhook(
     payload,
     providerEventId,
-    'deposit.paid',
+    PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
   );
   assert(
     lateWebhookRes.status === 200,
@@ -344,7 +350,7 @@ async function proveCancelledReconcile(token) {
     provider: PROVIDER,
     providerEventId,
     providerSessionRef: seed.providerSessionRef,
-    eventType: 'deposit.cancelled',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_CANCELLED,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: seed.bookingId,
@@ -379,7 +385,7 @@ async function proveFailedReconcile(token) {
     provider: PROVIDER,
     providerEventId,
     providerSessionRef: seed.providerSessionRef,
-    eventType: 'deposit.failed',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_FAILED,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: seed.bookingId,
@@ -427,7 +433,7 @@ async function proveExpiredReconcile(token) {
     provider: PROVIDER,
     providerEventId,
     providerSessionRef: seed.providerSessionRef,
-    eventType: 'deposit.expired',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_EXPIRED,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: seed.bookingId,
@@ -462,6 +468,133 @@ async function proveExpiredReconcile(token) {
   return { expiredSessionStatus: session?.status };
 }
 
+async function proveInvalidProviderReconcile(token) {
+  const label = 'provider-reconcile-invalid-provider';
+  const seed = await createOpenPaymentSession(day(4), label);
+  const invalidProvider = 'invalid-provider';
+  const providerEventId = `${label}-event-${seed.bookingId}`;
+
+  const invalidProviderRes = await reconcile(token, {
+    businessId: BUSINESS_ID,
+    bookingId: seed.bookingId,
+    provider: invalidProvider,
+    providerEventId,
+    providerSessionRef: seed.providerSessionRef,
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
+    payload: {
+      businessId: BUSINESS_ID,
+      bookingId: seed.bookingId,
+      providerSessionRef: seed.providerSessionRef,
+    },
+  });
+
+  assert(
+    invalidProviderRes.status === 200,
+    `INVALID_PROVIDER_STATUS_${invalidProviderRes.status}_${invalidProviderRes.text}`,
+  );
+  assert(
+    invalidProviderRes.json?.rejected === true,
+    'INVALID_PROVIDER_NOT_REJECTED',
+  );
+
+  const event = await getEvent(providerEventId, invalidProvider);
+  const session = await getSession(seed.sessionId);
+  assert(Boolean(event?.rejectedAt), 'INVALID_PROVIDER_REJECTED_AT_MISSING');
+  assert(
+    String(event?.rejectReason ?? '').includes('Unsupported provider'),
+    `INVALID_PROVIDER_REASON_${event?.rejectReason}`,
+  );
+  assert(
+    session?.status === 'OPEN',
+    `INVALID_PROVIDER_SESSION_STATUS_${session?.status}`,
+  );
+
+  return { invalidProviderRejected: true };
+}
+
+async function proveUnsupportedEventReconcile(token) {
+  const label = 'provider-reconcile-unsupported-event';
+  const seed = await createOpenPaymentSession(day(5), label);
+  const providerEventId = `${label}-event-${seed.bookingId}`;
+
+  const unsupportedRes = await reconcile(token, {
+    businessId: BUSINESS_ID,
+    bookingId: seed.bookingId,
+    provider: PROVIDER,
+    providerEventId,
+    providerSessionRef: seed.providerSessionRef,
+    eventType: 'deposit.unsupported',
+    payload: {
+      businessId: BUSINESS_ID,
+      bookingId: seed.bookingId,
+      providerSessionRef: seed.providerSessionRef,
+    },
+  });
+
+  assert(
+    unsupportedRes.status === 200,
+    `UNSUPPORTED_STATUS_${unsupportedRes.status}_${unsupportedRes.text}`,
+  );
+  assert(unsupportedRes.json?.rejected === true, 'UNSUPPORTED_NOT_REJECTED');
+
+  const event = await getEvent(providerEventId);
+  const session = await getSession(seed.sessionId);
+  assert(Boolean(event?.rejectedAt), 'UNSUPPORTED_REJECTED_AT_MISSING');
+  assert(
+    String(event?.rejectReason ?? '').includes('Unsupported event type'),
+    `UNSUPPORTED_REASON_${event?.rejectReason}`,
+  );
+  assert(
+    session?.status === 'OPEN',
+    `UNSUPPORTED_SESSION_STATUS_${session?.status}`,
+  );
+
+  return { unsupportedEventRejected: true };
+}
+
+async function proveBookingMismatchReconcile(token) {
+  const label = 'provider-reconcile-booking-mismatch';
+  const seed = await createOpenPaymentSession(day(6), label);
+  const providerEventId = `${label}-event-${seed.bookingId}`;
+
+  const mismatchRes = await reconcile(token, {
+    businessId: BUSINESS_ID,
+    bookingId: 'wrong-booking',
+    provider: PROVIDER,
+    providerEventId,
+    providerSessionRef: seed.providerSessionRef,
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
+    payload: {
+      businessId: BUSINESS_ID,
+      bookingId: 'wrong-booking',
+      providerSessionRef: seed.providerSessionRef,
+    },
+  });
+
+  assert(
+    mismatchRes.status === 200,
+    `BOOKING_MISMATCH_STATUS_${mismatchRes.status}_${mismatchRes.text}`,
+  );
+  assert(
+    mismatchRes.json?.rejected === true,
+    'BOOKING_MISMATCH_NOT_REJECTED',
+  );
+
+  const event = await getEvent(providerEventId);
+  const session = await getSession(seed.sessionId);
+  assert(Boolean(event?.rejectedAt), 'BOOKING_MISMATCH_REJECTED_AT_MISSING');
+  assert(
+    String(event?.rejectReason ?? '').includes('booking mismatch'),
+    `BOOKING_MISMATCH_REASON_${event?.rejectReason}`,
+  );
+  assert(
+    session?.status === 'OPEN',
+    `BOOKING_MISMATCH_SESSION_STATUS_${session?.status}`,
+  );
+
+  return { bookingMismatchRejected: true };
+}
+
 async function main() {
   const token = await loginOwner();
 
@@ -469,6 +602,9 @@ async function main() {
   const cancelled = await proveCancelledReconcile(token);
   const failed = await proveFailedReconcile(token);
   const expired = await proveExpiredReconcile(token);
+  const invalidProvider = await proveInvalidProviderReconcile(token);
+  const unsupportedEvent = await proveUnsupportedEventReconcile(token);
+  const bookingMismatch = await proveBookingMismatchReconcile(token);
 
   console.log(
     JSON.stringify(
@@ -478,6 +614,9 @@ async function main() {
         cancelledSessionStatus: cancelled.cancelledSessionStatus,
         failedSessionStatus: failed.failedSessionStatus,
         expiredSessionStatus: expired.expiredSessionStatus,
+        invalidProviderRejected: invalidProvider.invalidProviderRejected,
+        unsupportedEventRejected: unsupportedEvent.unsupportedEventRejected,
+        bookingMismatchRejected: bookingMismatch.bookingMismatchRejected,
         duplicateHandled: paid.duplicateHandled,
       },
       null,

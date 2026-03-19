@@ -9,13 +9,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BusinessRoles } from '../common/auth/business-roles.decorator';
 import { BusinessRolesGuard } from '../common/auth/business-roles.guard';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 import { ReconcileProviderPaymentDto } from './dto/reconcile-provider-payment.dto';
+import {
+  PAYMENT_PROVIDER_EVENT_TYPES,
+  PAYMENT_PROVIDER_NAMES,
+} from './payment-provider-contract';
 
 type ReqUser = { sub: string; email: string; role?: string };
 type ReqWithUser = Request & { user?: ReqUser };
@@ -65,6 +69,24 @@ export class PaymentsController {
 
   @Post('provider/webhook')
   @HttpCode(200)
+  @ApiHeader({
+    name: 'x-payment-provider',
+    required: true,
+    enum: PAYMENT_PROVIDER_NAMES,
+  })
+  @ApiHeader({
+    name: 'x-payment-event-id',
+    required: true,
+  })
+  @ApiHeader({
+    name: 'x-payment-event-type',
+    required: true,
+    enum: PAYMENT_PROVIDER_EVENT_TYPES,
+  })
+  @ApiHeader({
+    name: 'x-payment-signature',
+    required: true,
+  })
   async providerWebhook(
     @Req() req: ReqWithRawBody,
     @Headers('x-payment-signature') signature: string,

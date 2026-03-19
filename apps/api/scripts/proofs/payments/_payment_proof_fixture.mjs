@@ -1,11 +1,31 @@
+import { createRequire } from 'node:module';
 import { PrismaClient } from '@prisma/client';
 
 export const prisma = new PrismaClient();
+
+const require = createRequire(import.meta.url);
+
+function loadPaymentProviderContract() {
+  try {
+    return require('../../../dist/payments/payment-provider-contract.js');
+  } catch (error) {
+    throw new Error(
+      `PAYMENT_PROVIDER_CONTRACT_LOAD_FAILED_${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+const paymentProviderContract = loadPaymentProviderContract();
 
 export const API = process.env.API_URL ?? 'http://localhost:3001/api';
 export const OWNER_EMAIL = process.env.OWNER_EMAIL ?? 'owner@example.com';
 export const BUSINESS_ID = process.env.BUSINESS_ID ?? 'b1';
 export const TZ_NAME = process.env.TZ_NAME ?? 'Europe/Paris';
+export const PAYMENT_PROVIDER_NAME =
+  paymentProviderContract.DEFAULT_PAYMENT_PROVIDER;
+export const PAYMENT_PROVIDER_EVENT = paymentProviderContract.PAYMENT_PROVIDER_EVENT;
 
 export function assert(cond, msg) {
   if (!cond) throw new Error(msg);

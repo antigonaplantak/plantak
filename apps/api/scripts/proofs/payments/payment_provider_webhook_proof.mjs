@@ -7,12 +7,13 @@ import {
   authOwner,
   ensureDepositEnabledFixture,
   getFirstSlot,
+  PAYMENT_PROVIDER_NAME,
+  PAYMENT_PROVIDER_EVENT,
 } from './_payment_proof_fixture.mjs';
 
 const DATE_YMD = process.env.DATE_YMD ?? '2026-04-23';
 const PAYMENT_WEBHOOK_SECRET =
   process.env.PAYMENT_WEBHOOK_SECRET ?? 'dev_payment_webhook_secret';
-const PROVIDER = 'stub';
 
 function sign(rawBody) {
   return crypto
@@ -21,14 +22,20 @@ function sign(rawBody) {
     .digest('hex');
 }
 
-async function postWebhook({ eventId, eventType, payload, signature }) {
+async function postWebhook({
+  eventId,
+  eventType,
+  payload,
+  signature,
+  provider = PAYMENT_PROVIDER_NAME,
+}) {
   const rawBody = JSON.stringify(payload);
   const res = await fetch(`${API}/payments/provider/webhook`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'x-payment-provider': PROVIDER,
+      'x-payment-provider': provider,
       'x-payment-event-id': eventId,
       'x-payment-event-type': eventType,
       'x-payment-signature': signature ?? sign(rawBody),
@@ -125,11 +132,14 @@ async function createPendingBookingAndSession({
   };
 }
 
-async function readProviderEvent(providerEventId) {
+async function readProviderEvent(
+  providerEventId,
+  provider = PAYMENT_PROVIDER_NAME,
+) {
   return prisma.paymentProviderEvent.findUnique({
     where: {
       provider_providerEventId: {
-        provider: PROVIDER,
+        provider,
         providerEventId,
       },
     },
@@ -194,7 +204,7 @@ async function main() {
   const badSigEventId = `${key}-bad-signature`;
   const badSig = await postWebhook({
     eventId: badSigEventId,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload: paidPayload,
     signature: 'bad-signature',
   });
@@ -204,7 +214,7 @@ async function main() {
   const paidEventId = `${key}-deposit-paid`;
   const paidRes = await postWebhook({
     eventId: paidEventId,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload: paidPayload,
   });
   assert(paidRes.status === 200, `PAID_WEBHOOK_STATUS_${paidRes.status}_${paidRes.text}`);
@@ -233,7 +243,7 @@ async function main() {
 
   const duplicate = await postWebhook({
     eventId: paidEventId,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload: paidPayload,
   });
   assert(duplicate.status === 200, `DUPLICATE_STATUS_${duplicate.status}_${duplicate.text}`);
@@ -249,7 +259,7 @@ async function main() {
   const wrongBusinessEventId = `${key}-wrong-business-event`;
   const wrongBusinessRes = await postWebhook({
     eventId: wrongBusinessEventId,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload: {
       businessId: 'wrong-business',
       bookingId: wrongBusiness.booking.id,
@@ -277,7 +287,7 @@ async function main() {
   const wrongBookingEventId = `${key}-wrong-booking-event`;
   const wrongBookingRes = await postWebhook({
     eventId: wrongBookingEventId,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: 'wrong-booking',
@@ -296,7 +306,7 @@ async function main() {
   const missingSessionEventId = `${key}-missing-session`;
   const missingSessionRes = await postWebhook({
     eventId: missingSessionEventId,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: paid.booking.id,
@@ -315,7 +325,7 @@ async function main() {
   const closedSessionEventId = `${key}-closed-session`;
   const closedSessionRes = await postWebhook({
     eventId: closedSessionEventId,
-    eventType: 'deposit.paid',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: paid.booking.id,
@@ -359,6 +369,53 @@ async function main() {
   );
   assert(unsupportedSession?.status === 'OPEN', `UNSUPPORTED_SESSION_STATUS_${unsupportedSession?.status}`);
 
+  const invalidProvider = await createPendingBookingAndSession({
+    token,
+    userId,
+    serviceId,
+    staffId,
+    key: `${key}-invalid-provider`,
+  });
+  const invalidProviderValue = 'invalid-provider';
+  const invalidProviderEventId = `${key}-invalid-provider-event`;
+  const invalidProviderRes = await postWebhook({
+    eventId: invalidProviderEventId,
+    provider: invalidProviderValue,
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID,
+    payload: {
+      businessId: BUSINESS_ID,
+      bookingId: invalidProvider.booking.id,
+      providerSessionRef: invalidProvider.providerSessionRef,
+    },
+  });
+  const invalidProviderEvent = await readProviderEvent(
+    invalidProviderEventId,
+    invalidProviderValue,
+  );
+  const invalidProviderSession = await readSession(invalidProvider.session.id);
+  assert(
+    invalidProviderRes.status === 200,
+    `INVALID_PROVIDER_STATUS_${invalidProviderRes.status}_${invalidProviderRes.text}`,
+  );
+  assert(
+    invalidProviderRes.json?.rejected === true,
+    'INVALID_PROVIDER_NOT_REJECTED',
+  );
+  assert(
+    Boolean(invalidProviderEvent?.rejectedAt),
+    'INVALID_PROVIDER_REJECTED_AT_MISSING',
+  );
+  assert(
+    String(invalidProviderEvent?.rejectReason ?? '').includes(
+      'Unsupported provider',
+    ),
+    `INVALID_PROVIDER_REASON_${invalidProviderEvent?.rejectReason}`,
+  );
+  assert(
+    invalidProviderSession?.status === 'OPEN',
+    `INVALID_PROVIDER_SESSION_STATUS_${invalidProviderSession?.status}`,
+  );
+
   const cancelled = await createPendingBookingAndSession({
     token,
     userId,
@@ -369,7 +426,7 @@ async function main() {
   const cancelledEventId = `${key}-cancelled-event`;
   const cancelledRes = await postWebhook({
     eventId: cancelledEventId,
-    eventType: 'deposit.cancelled',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_CANCELLED,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: cancelled.booking.id,
@@ -396,7 +453,7 @@ async function main() {
   const failedEventId = `${key}-failed-event`;
   const failedRes = await postWebhook({
     eventId: failedEventId,
-    eventType: 'deposit.failed',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_FAILED,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: failed.booking.id,
@@ -432,7 +489,7 @@ async function main() {
   const expiredEventId = `${key}-expired-event`;
   const expiredRes = await postWebhook({
     eventId: expiredEventId,
-    eventType: 'deposit.expired',
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_EXPIRED,
     payload: {
       businessId: BUSINESS_ID,
       bookingId: expired.booking.id,

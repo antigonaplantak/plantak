@@ -10,6 +10,13 @@ import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
+import {
+  DEFAULT_PAYMENT_PROVIDER,
+  PAYMENT_PROVIDER_EVENT,
+  parsePaymentProviderContract,
+  normalizePaymentProviderEventType,
+  normalizePaymentProviderName,
+} from './payment-provider-contract';
 
 @Injectable()
 export class PaymentsService {
@@ -281,7 +288,7 @@ export class PaymentsService {
       data: {
         bookingId: booking.id,
         businessId: booking.businessId,
-        provider: 'stub',
+        provider: DEFAULT_PAYMENT_PROVIDER,
         status: 'OPEN',
         amountCents: depositAmountCents,
         currency: booking.currencySnapshot || 'EUR',
@@ -348,9 +355,9 @@ export class PaymentsService {
     providerSessionRef?: string;
     verifySignature: boolean;
   }) {
-    const provider = String(input.provider || '').trim();
+    const provider = normalizePaymentProviderName(input.provider);
     const providerEventId = String(input.providerEventId || '').trim();
-    const eventType = String(input.eventType || '').trim();
+    const eventType = normalizePaymentProviderEventType(input.eventType);
     const businessId = String(input.businessId || '').trim();
     const bookingId = String(input.bookingId || '').trim();
 
@@ -442,16 +449,30 @@ export class PaymentsService {
     const rowId = (row as { id: string }).id;
 
     try {
-      const providerSessionRef =
-        String(input.providerSessionRef || '').trim() ||
-        this.getProviderSessionRef(input.payload);
-      if (!providerSessionRef) {
+      const providerContract = parsePaymentProviderContract({
+        provider,
+        eventType,
+      });
+      if (!providerContract.ok) {
+        throw new BadRequestException(providerContract.reason);
+      }
+
+      const providerSessionRef = providerContract.eventRule
+        .requiresProviderSessionRef
+        ? String(input.providerSessionRef || '').trim() ||
+          this.getProviderSessionRef(input.payload)
+        : '';
+
+      if (
+        providerContract.eventRule.requiresProviderSessionRef &&
+        !providerSessionRef
+      ) {
         throw new BadRequestException('providerSessionRef is required');
       }
 
       const session = await this.prisma.paymentSession.findFirst({
         where: {
-          provider,
+          provider: providerContract.provider,
           providerSessionRef,
         },
         select: {
@@ -483,81 +504,63 @@ export class PaymentsService {
       const resolvedBookingId = session.bookingId;
       let result: unknown;
 
-      switch (eventType) {
-        case 'deposit.paid':
+      switch (providerContract.eventType) {
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID:
           result = await this.bookings.markDepositPaid({
             businessId: resolvedBusinessId,
             bookingId: resolvedBookingId,
             actorUserId: 'system:payment-webhook',
             actorRole: 'ADMIN',
-            idempotencyKey: `provider:${provider}:${providerEventId}:deposit-paid`,
+            idempotencyKey: `provider:${providerContract.provider}:${providerEventId}:deposit-paid`,
           });
           await this.markPaymentSessionState({
             sessionId: session.id,
             nextStatus: 'CONSUMED',
-            eventType,
+            eventType: providerContract.eventType,
             providerEventId,
             payload: input.payload,
           });
           break;
 
-        case 'deposit.expired':
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_EXPIRED:
           result = await this.bookings.expirePendingDeposit({
             businessId: resolvedBusinessId,
             bookingId: resolvedBookingId,
             actorUserId: 'system:payment-webhook',
             actorRole: 'ADMIN',
-            idempotencyKey: `provider:${provider}:${providerEventId}:deposit-expire`,
+            idempotencyKey: `provider:${providerContract.provider}:${providerEventId}:deposit-expire`,
           });
           await this.markPaymentSessionState({
             sessionId: session.id,
             nextStatus: 'EXPIRED',
-            eventType,
+            eventType: providerContract.eventType,
             providerEventId,
             payload: input.payload,
           });
           break;
 
-        case 'deposit.cancelled':
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_CANCELLED:
           await this.markPaymentSessionState({
             sessionId: session.id,
             nextStatus: 'CANCELLED',
-            eventType,
+            eventType: providerContract.eventType,
             providerEventId,
             payload: input.payload,
           });
           result = { sessionId: session.id, status: 'CANCELLED' };
           break;
 
-        case 'deposit.failed':
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_FAILED:
           await this.markPaymentSessionState({
             sessionId: session.id,
             nextStatus: 'FAILED',
-            eventType,
+            eventType: providerContract.eventType,
             providerEventId,
             payload: input.payload,
             failureReason: this.getFailureReason(input.payload),
           });
           result = { sessionId: session.id, status: 'FAILED' };
           break;
-
-        default:
-          await this.prisma.paymentProviderEvent.update({
-            where: { id: rowId },
-            data: {
-              rejectedAt: new Date(),
-              rejectReason: `Unsupported event type: ${eventType}`,
-            },
-          });
-
-          return {
-            ok: true,
-            duplicate: false,
-            provider,
-            providerEventId,
-            eventType,
-            rejected: true,
-          };
       }
 
       await this.prisma.paymentProviderEvent.update({
@@ -574,9 +577,9 @@ export class PaymentsService {
       return {
         ok: true,
         duplicate: false,
-        provider,
+        provider: providerContract.provider,
         providerEventId,
-        eventType,
+        eventType: providerContract.eventType,
         processed: true,
         result,
       };
