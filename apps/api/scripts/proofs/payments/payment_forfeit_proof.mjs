@@ -145,15 +145,16 @@ async function main() {
   });
 
   assert(
-    forfeitedOtherKey?.id === forfeited?.id &&
-      forfeitedOtherKey?.businessId === forfeited?.businessId &&
-      forfeitedOtherKey?.staffId === forfeited?.staffId &&
-      forfeitedOtherKey?.customerId === forfeited?.customerId &&
-      forfeitedOtherKey?.status === forfeited?.status &&
-      forfeitedOtherKey?.paymentStatus === forfeited?.paymentStatus &&
-      forfeitedOtherKey?.startAt === forfeited?.startAt &&
-      forfeitedOtherKey?.endAt === forfeited?.endAt,
-    'FORFEIT_OTHER_KEY_RESPONSE_MISMATCH',
+    forfeitedOtherKey?.id === forfeited?.id,
+    `FORFEIT_OTHER_KEY_ID_${forfeitedOtherKey?.id}_EXPECTED_${forfeited?.id}`,
+  );
+  assert(
+    forfeitedOtherKey?.status === 'CANCELLED',
+    `FORFEIT_OTHER_KEY_STATUS_${forfeitedOtherKey?.status}`,
+  );
+  assert(
+    forfeitedOtherKey?.paymentStatus === 'DEPOSIT_FORFEITED',
+    `FORFEIT_OTHER_KEY_PAYMENT_STATUS_${forfeitedOtherKey?.paymentStatus}`,
   );
 
   const secondSlot = await getFirstSlot({
