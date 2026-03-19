@@ -42,6 +42,8 @@ async function createBooking(token, userId, serviceId, staffId, idempotencyKey) 
     dateYmd: DATE_YMD,
   });
 
+  assert(slot?.start, 'NO_SLOT_FOUND_FOR_INVALID_STATE');
+
   const booking = await httpOk('/bookings', {
     method: 'POST',
     token,
@@ -187,6 +189,20 @@ async function main() {
     pendingDb.paymentStatus === 'DEPOSIT_PENDING',
     `PENDING_DB_PAYMENT_STATUS_${pendingDb?.paymentStatus}`,
   );
+  assert(
+    (pendingDb.amountDepositCentsSnapshot ?? 0) > 0,
+    `PENDING_DB_DEPOSIT_AMOUNT_${pendingDb?.amountDepositCentsSnapshot}`,
+  );
+  assert(
+    (pendingDb.amountRemainingCentsSnapshot ?? 0) > 0,
+    `PENDING_DB_REMAINING_AMOUNT_${pendingDb?.amountRemainingCentsSnapshot}`,
+  );
+  assert(
+    (pendingDb.amountTotalCentsSnapshot ?? 0) ===
+      (pendingDb.amountDepositCentsSnapshot ?? 0) +
+        (pendingDb.amountRemainingCentsSnapshot ?? 0),
+    `PENDING_DB_TOTAL_MISMATCH_${pendingDb?.amountTotalCentsSnapshot}`,
+  );
 
   const pendingInvalidTxCount = await countPaymentTx(pendingBooking.id, [
     'FINAL_SETTLEMENT',
@@ -214,6 +230,10 @@ async function main() {
     `${key}-confirmed-deposit-paid`,
   );
 
+  assert(
+    confirmedPaid.status === 'CONFIRMED',
+    `CONFIRMED_DEPOSIT_PAID_BOOKING_STATUS_${confirmedPaid?.status}`,
+  );
   assert(
     confirmedPaid.paymentStatus === 'REMAINING_DUE_IN_SALON',
     `CONFIRMED_DEPOSIT_PAID_STATUS_${confirmedPaid?.paymentStatus}`,
@@ -286,6 +306,20 @@ async function main() {
     confirmedDb.paymentStatus === 'REMAINING_DUE_IN_SALON',
     `CONFIRMED_DB_PAYMENT_STATUS_${confirmedDb?.paymentStatus}`,
   );
+  assert(
+    (confirmedDb.amountDepositCentsSnapshot ?? 0) > 0,
+    `CONFIRMED_DB_DEPOSIT_AMOUNT_${confirmedDb?.amountDepositCentsSnapshot}`,
+  );
+  assert(
+    (confirmedDb.amountRemainingCentsSnapshot ?? 0) > 0,
+    `CONFIRMED_DB_REMAINING_AMOUNT_${confirmedDb?.amountRemainingCentsSnapshot}`,
+  );
+  assert(
+    (confirmedDb.amountTotalCentsSnapshot ?? 0) ===
+      (confirmedDb.amountDepositCentsSnapshot ?? 0) +
+        (confirmedDb.amountRemainingCentsSnapshot ?? 0),
+    `CONFIRMED_DB_TOTAL_MISMATCH_${confirmedDb?.amountTotalCentsSnapshot}`,
+  );
 
   const confirmedInvalidTxCount = await countPaymentTx(confirmedBooking.id, [
     'DEPOSIT_WAIVE',
@@ -314,6 +348,10 @@ async function main() {
   );
 
   assert(
+    paidSettled.status === 'CONFIRMED',
+    `PAID_BOOKING_STATUS_${paidSettled?.status}`,
+  );
+  assert(
     paidSettled.paymentStatus === 'PAID',
     `PAID_BOOKING_PAYMENT_STATUS_${paidSettled?.paymentStatus}`,
   );
@@ -338,6 +376,20 @@ async function main() {
   assert(
     paidDb.paymentStatus === 'PAID',
     `PAID_DB_PAYMENT_STATUS_${paidDb?.paymentStatus}`,
+  );
+  assert(
+    (paidDb.amountDepositCentsSnapshot ?? 0) > 0,
+    `PAID_DB_DEPOSIT_AMOUNT_${paidDb?.amountDepositCentsSnapshot}`,
+  );
+  assert(
+    (paidDb.amountRemainingCentsSnapshot ?? 0) > 0,
+    `PAID_DB_REMAINING_AMOUNT_${paidDb?.amountRemainingCentsSnapshot}`,
+  );
+  assert(
+    (paidDb.amountTotalCentsSnapshot ?? 0) ===
+      (paidDb.amountDepositCentsSnapshot ?? 0) +
+        (paidDb.amountRemainingCentsSnapshot ?? 0),
+    `PAID_DB_TOTAL_MISMATCH_${paidDb?.amountTotalCentsSnapshot}`,
   );
 
   await expectHttpStatus(
