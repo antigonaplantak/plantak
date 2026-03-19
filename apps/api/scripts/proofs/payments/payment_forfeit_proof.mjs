@@ -3,6 +3,7 @@ import {
   BUSINESS_ID,
   assert,
   http,
+  httpRaw,
   authOwner,
   ensureDepositEnabledFixture,
   getFirstSlot,
@@ -19,6 +20,8 @@ async function main() {
     staffId,
     dateYmd: DATE_YMD,
   });
+
+  assert(slot?.start, 'NO_SLOT_FOUND_FOR_FORFEIT');
 
   const key = `payment-forfeit-proof-${Date.now()}`;
 
@@ -71,6 +74,10 @@ async function main() {
   assert(
     beforeForfeit.paymentStatus === 'REMAINING_DUE_IN_SALON',
     `DB_PAYMENT_STATUS_BEFORE_FORFEIT_${beforeForfeit?.paymentStatus}`,
+  );
+  assert(
+    (beforeForfeit.amountDepositCentsSnapshot ?? 0) > 0,
+    `DB_DEPOSIT_AMOUNT_BEFORE_FORFEIT_${beforeForfeit?.amountDepositCentsSnapshot}`,
   );
 
   const cancelled = await http(`/bookings/${booking.id}/cancel`, {
@@ -128,6 +135,143 @@ async function main() {
     'FORFEIT_IDEMPOTENT_RESPONSE_MISMATCH',
   );
 
+  const forfeitedOtherKey = await http(`/bookings/${booking.id}/payment-forfeit`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: `${forfeitKey}-other`,
+    },
+  });
+
+  assert(
+    forfeitedOtherKey?.id === forfeited?.id,
+    `FORFEIT_OTHER_KEY_ID_${forfeitedOtherKey?.id}_EXPECTED_${forfeited?.id}`,
+  );
+  assert(
+    forfeitedOtherKey?.status === 'CANCELLED',
+    `FORFEIT_OTHER_KEY_STATUS_${forfeitedOtherKey?.status}`,
+  );
+  assert(
+    forfeitedOtherKey?.paymentStatus === 'DEPOSIT_FORFEITED',
+    `FORFEIT_OTHER_KEY_PAYMENT_STATUS_${forfeitedOtherKey?.paymentStatus}`,
+  );
+
+  const secondSlot = await getFirstSlot({
+    businessId: BUSINESS_ID,
+    serviceId,
+    staffId,
+    dateYmd: DATE_YMD,
+  });
+
+  assert(secondSlot?.start, 'NO_SLOT_FOUND_FOR_FORFEIT_REUSE');
+
+  const secondBooking = await http('/bookings', {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      serviceId,
+      staffId,
+      customerId: userId,
+      startAt: secondSlot.start,
+      idempotencyKey: `${key}-create-2`,
+    },
+  });
+
+  assert(secondBooking?.id, 'SECOND_BOOKING_CREATE_FAILED');
+  assert(
+    secondBooking?.id !== booking.id,
+    `SECOND_BOOKING_ID_REUSED_${secondBooking?.id}`,
+  );
+  assert(
+    secondBooking?.paymentStatus === 'DEPOSIT_PENDING',
+    `SECOND_BOOKING_PAYMENT_STATUS_${secondBooking?.paymentStatus}`,
+  );
+
+  const secondPaid = await http(`/bookings/${secondBooking.id}/deposit-paid`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: `${key}-deposit-paid-2`,
+    },
+  });
+
+  assert(
+    secondPaid?.status === 'CONFIRMED',
+    `SECOND_DEPOSIT_UNEXPECTED_STATUS_${secondPaid?.status}`,
+  );
+  assert(
+    secondPaid?.paymentStatus === 'REMAINING_DUE_IN_SALON',
+    `SECOND_DEPOSIT_UNEXPECTED_PAYMENT_STATUS_${secondPaid?.paymentStatus}`,
+  );
+
+  const secondCancelled = await http(`/bookings/${secondBooking.id}/cancel`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: `${key}-cancel-2`,
+    },
+  });
+
+  assert(
+    secondCancelled?.status === 'CANCELLED',
+    `SECOND_CANCEL_UNEXPECTED_STATUS_${secondCancelled?.status}`,
+  );
+
+  const reusedKeyDifferentBooking = await httpRaw(
+    `/bookings/${secondBooking.id}/payment-forfeit`,
+    {
+      method: 'POST',
+      token,
+      body: {
+        businessId: BUSINESS_ID,
+        idempotencyKey: forfeitKey,
+      },
+    },
+  );
+
+  assert(
+    reusedKeyDifferentBooking.status === 409,
+    `FORFEIT_REUSED_KEY_DIFFERENT_BOOKING_STATUS_${reusedKeyDifferentBooking.status}_${reusedKeyDifferentBooking.text}`,
+  );
+  assert(
+    reusedKeyDifferentBooking.text.includes('Idempotency key reused with different request'),
+    `FORFEIT_REUSED_KEY_DIFFERENT_BOOKING_BODY_${reusedKeyDifferentBooking.text}`,
+  );
+
+  const secondDbBooking = await prisma.booking.findUnique({
+    where: { id: secondBooking.id },
+    select: {
+      id: true,
+      status: true,
+      paymentStatus: true,
+    },
+  });
+
+  const secondForfeitTxCount = await prisma.paymentTransaction.count({
+    where: {
+      bookingId: secondBooking.id,
+      transactionType: 'DEPOSIT_FORFEIT',
+    },
+  });
+
+  assert(secondDbBooking, 'SECOND_DB_BOOKING_NOT_FOUND_AFTER_CONFLICT');
+  assert(
+    secondDbBooking.status === 'CANCELLED',
+    `SECOND_DB_STATUS_AFTER_CONFLICT_${secondDbBooking?.status}`,
+  );
+  assert(
+    secondDbBooking.paymentStatus === 'REMAINING_DUE_IN_SALON',
+    `SECOND_DB_PAYMENT_STATUS_AFTER_CONFLICT_${secondDbBooking?.paymentStatus}`,
+  );
+  assert(
+    secondForfeitTxCount === 0,
+    `SECOND_DEPOSIT_FORFEIT_TX_COUNT_${secondForfeitTxCount}`,
+  );
+
   const dbBooking = await prisma.booking.findUnique({
     where: { id: booking.id },
     select: {
@@ -172,6 +316,18 @@ async function main() {
   assert(
     txs[0].amountCents === (dbBooking.amountDepositCentsSnapshot ?? 0),
     `DEPOSIT_FORFEIT_AMOUNT_MISMATCH_${txs[0].amountCents}_EXPECTED_${dbBooking.amountDepositCentsSnapshot ?? 0}`,
+  );
+  assert(
+    txs[0].currency === 'EUR',
+    `DEPOSIT_FORFEIT_CURRENCY_${txs[0].currency}`,
+  );
+  assert(
+    Boolean(txs[0].actorUserId),
+    'DEPOSIT_FORFEIT_ACTOR_USER_MISSING',
+  );
+  assert(
+    txs[0].actorRole === 'OWNER',
+    `DEPOSIT_FORFEIT_ACTOR_ROLE_${txs[0].actorRole}`,
   );
   assert(
     (forfeitedAgg._sum.amountCents ?? 0) === (dbBooking.amountDepositCentsSnapshot ?? 0),
