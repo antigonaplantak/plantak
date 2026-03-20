@@ -50,6 +50,7 @@
     "ops:queue:alerts": "node scripts/ops_queue_alerts.mjs",
     "ops:seed:booking-gate": "node scripts/ops_seed_booking_gate.mjs",
     "proof:availability:enterprise": "bash scripts/availability_enterprise_proof.sh",
+    "proof:payments:session-create": "pnpm exec prisma generate && node scripts/proofs/payments/payment_session_create_proof.mjs",
     "proof:payments:stack": "bash scripts/proofs/payments/payment_stack_proof.sh"
   },
   "dependencies": {
