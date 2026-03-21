@@ -8,7 +8,9 @@ export const BUSINESS_ID = process.env.BUSINESS_ID ?? 'b1';
 export const TZ_NAME = process.env.TZ_NAME ?? 'Europe/Paris';
 export const PAYMENT_PROVIDER_NAME = 'stub';
 export const PAYMENT_PROVIDER_EVENT = Object.freeze({
+  DEPOSIT_AUTHORIZED: 'deposit.authorized',
   DEPOSIT_PAID: 'deposit.paid',
+  DEPOSIT_VOIDED: 'deposit.voided',
   DEPOSIT_EXPIRED: 'deposit.expired',
   DEPOSIT_CANCELLED: 'deposit.cancelled',
   DEPOSIT_FAILED: 'deposit.failed',

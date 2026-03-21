@@ -142,7 +142,7 @@ export class PaymentsService {
 
   private async markPaymentSessionState(input: {
     sessionId: string;
-    nextStatus: 'CONSUMED' | 'EXPIRED' | 'CANCELLED' | 'FAILED';
+    nextStatus: 'AUTHORIZED' | 'CONSUMED' | 'EXPIRED' | 'CANCELLED' | 'FAILED';
     eventType: string;
     providerEventId: string;
     payload: unknown;
@@ -158,6 +158,10 @@ export class PaymentsService {
         payload: input.payload as Prisma.InputJsonValue,
       } as Prisma.InputJsonValue,
     };
+
+    if (input.nextStatus === 'AUTHORIZED') {
+      data.authorizedAt = now;
+    }
 
     if (input.nextStatus === 'CONSUMED') {
       data.consumedAt = now;
@@ -176,6 +180,28 @@ export class PaymentsService {
     await this.prisma.paymentSession.update({
       where: { id: input.sessionId },
       data,
+    });
+  }
+
+  private async createPaymentTransaction(input: {
+    bookingId: string;
+    businessId: string;
+    transactionType: 'DEPOSIT_AUTHORIZATION' | 'DEPOSIT_VOID';
+    amountCents: number;
+    currency: string;
+    meta: Prisma.InputJsonValue;
+  }) {
+    await this.prisma.paymentTransaction.create({
+      data: {
+        bookingId: input.bookingId,
+        businessId: input.businessId,
+        transactionType: input.transactionType,
+        amountCents: input.amountCents,
+        currency: input.currency,
+        actorUserId: 'system:payment-webhook',
+        actorRole: 'ADMIN',
+        meta: input.meta,
+      },
     });
   }
 
@@ -481,6 +507,9 @@ export class PaymentsService {
           bookingId: true,
           status: true,
           providerSessionRef: true,
+          amountCents: true,
+          currency: true,
+          authorizedAt: true,
         },
       });
 
@@ -496,8 +525,22 @@ export class PaymentsService {
         throw new ConflictException('Payment session booking mismatch');
       }
 
-      if (session.status !== 'OPEN') {
-        throw new ConflictException('Payment session not open');
+      const allowedStatusesByEvent = {
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHORIZED]: ['OPEN'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID]: ['AUTHORIZED'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_VOIDED]: ['AUTHORIZED'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_EXPIRED]: ['OPEN'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_CANCELLED]: ['OPEN'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_FAILED]: ['OPEN', 'AUTHORIZED'],
+      } as const;
+
+      const allowedStatuses =
+        allowedStatusesByEvent[providerContract.eventType] ?? [];
+
+      if (!allowedStatuses.some((status) => status === session.status)) {
+        throw new ConflictException(
+          `Payment session status ${session.status} not allowed for ${providerContract.eventType}`,
+        );
       }
 
       const resolvedBusinessId = session.businessId;
@@ -505,6 +548,29 @@ export class PaymentsService {
       let result: unknown;
 
       switch (providerContract.eventType) {
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHORIZED:
+          await this.createPaymentTransaction({
+            bookingId: resolvedBookingId,
+            businessId: resolvedBusinessId,
+            transactionType: 'DEPOSIT_AUTHORIZATION',
+            amountCents: session.amountCents,
+            currency: session.currency,
+            meta: {
+              providerEventId,
+              eventType: providerContract.eventType,
+              providerSessionRef,
+            } as Prisma.InputJsonValue,
+          });
+          await this.markPaymentSessionState({
+            sessionId: session.id,
+            nextStatus: 'AUTHORIZED',
+            eventType: providerContract.eventType,
+            providerEventId,
+            payload: input.payload,
+          });
+          result = { sessionId: session.id, status: 'AUTHORIZED' };
+          break;
+
         case PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID:
           result = await this.bookings.markDepositPaid({
             businessId: resolvedBusinessId,
@@ -537,6 +603,29 @@ export class PaymentsService {
             providerEventId,
             payload: input.payload,
           });
+          break;
+
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_VOIDED:
+          await this.createPaymentTransaction({
+            bookingId: resolvedBookingId,
+            businessId: resolvedBusinessId,
+            transactionType: 'DEPOSIT_VOID',
+            amountCents: session.amountCents,
+            currency: session.currency,
+            meta: {
+              providerEventId,
+              eventType: providerContract.eventType,
+              providerSessionRef,
+            } as Prisma.InputJsonValue,
+          });
+          await this.markPaymentSessionState({
+            sessionId: session.id,
+            nextStatus: 'CANCELLED',
+            eventType: providerContract.eventType,
+            providerEventId,
+            payload: input.payload,
+          });
+          result = { sessionId: session.id, status: 'CANCELLED' };
           break;
 
         case PAYMENT_PROVIDER_EVENT.DEPOSIT_CANCELLED:
