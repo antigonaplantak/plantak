@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
+import {
+  authOwner,
+  ensureDepositEnabledFixture,
+  getFirstSlot,
+} from './_payment_proof_fixture.mjs';
 
 const prisma = new PrismaClient();
 const require = createRequire(import.meta.url);
@@ -14,24 +17,33 @@ const {
 } = require('../../../dist/payments/payment-provider-contract.js');
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001/api';
-const BASE_DATE =
-  process.env.DATE_YMD ??
-  new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const BASE_DATE = process.env.DATE_YMD ?? '2027-01-12';
 
 const OWNER_EMAIL = 'owner@example.com';
 const BUSINESS_ID = 'b1';
 const PAYMENT_WEBHOOK_SECRET =
   process.env.PAYMENT_WEBHOOK_SECRET ?? 'dev_payment_webhook_secret';
 
-const SESSION_CREATE_PROOF_PATH = fileURLToPath(
-  new URL('./payment_session_create_proof.mjs', import.meta.url),
-);
+let ownerPromise;
+let fixturePromise;
+
+async function getOwner() {
+  if (!ownerPromise) ownerPromise = authOwner();
+  return ownerPromise;
+}
+
+async function getFixture() {
+  if (!fixturePromise) fixturePromise = ensureDepositEnabledFixture();
+  return fixturePromise;
+}
 
 function day(offset) {
   const base = new Date(`${BASE_DATE}T00:00:00.000Z`);
   base.setUTCDate(base.getUTCDate() + offset);
   return base.toISOString().slice(0, 10);
 }
+
+const RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -93,80 +105,84 @@ async function http(path, init = {}, attempt = 0) {
 }
 
 async function loginOwner() {
-  const requestRes = await http('/auth/magic/request', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL },
-  });
-
-  assert(
-    requestRes.status === 201,
-    `MAGIC_REQUEST_${requestRes.status}_${requestRes.text}`,
-  );
-
-  const code =
-    requestRes.json?.code ??
-    requestRes.json?.devCode ??
-    requestRes.json?.debugCode ??
-    requestRes.json?.magicCode ??
-    requestRes.json?.otp;
-
-  assert(code, 'MAGIC_CODE_NOT_FOUND');
-
-  const verifyRes = await http('/auth/magic/verify', {
-    method: 'POST',
-    body: { email: OWNER_EMAIL, code },
-  });
-
-  assert(
-    verifyRes.status === 201,
-    `MAGIC_VERIFY_${verifyRes.status}_${verifyRes.text}`,
-  );
-
-  const token =
-    verifyRes.json?.accessToken ??
-    verifyRes.json?.tokens?.accessToken ??
-    verifyRes.json?.access?.token ??
-    verifyRes.json?.token;
-
-  assert(token, 'ACCESS_TOKEN_NOT_FOUND');
+  const { token } = await getOwner();
   return token;
 }
 
-function extractSessionCreateJson(stdout) {
-  const match = stdout.match(
-    /(\{[\s\S]*?"bookingId"[\s\S]*?"sessionId"[\s\S]*?"status"\s*:\s*"OPEN"[\s\S]*?\})\s*PAYMENT_SESSION_CREATE_PROOF_OK/,
-  );
-  assert(match, `SESSION_CREATE_JSON_NOT_FOUND\n${stdout}`);
-  return JSON.parse(match[1]);
-}
-
 async function createOpenPaymentSession(dateYmd, label) {
-  const run = spawnSync(
-    'node',
-    [SESSION_CREATE_PROOF_PATH],
-    {
-      cwd: process.cwd(),
-      env: { ...process.env, API_URL, DATE_YMD: dateYmd },
-      encoding: 'utf8',
+  console.log(`TRACE createOpenPaymentSession:start label=${label} date=${dateYmd}`);
+
+  const { token, userId } = await getOwner();
+  const { serviceId, staffId } = await getFixture();
+
+  const slot = await getFirstSlot({
+    businessId: BUSINESS_ID,
+    serviceId,
+    staffId,
+    dateYmd,
+    searchDays: 45,
+  });
+
+  assert(slot?.start, `NO_SLOT_FOUND_${label}_${dateYmd}`);
+
+  const bookingRes = await http('/bookings', {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      serviceId,
+      staffId,
+      customerId: userId,
+      startAt: slot.start,
+      idempotencyKey: `${label}-${RUN_ID}-create`,
     },
-  );
+  });
 
   assert(
-    run.status === 0,
-    `SESSION_CREATE_PROOF_FAILED_${label}\nSTDOUT:\n${run.stdout}\nSTDERR:\n${run.stderr}`,
+    bookingRes.status === 201,
+    `BOOKING_CREATE_FAILED_${label}_${bookingRes.status}_${bookingRes.text}`,
   );
 
-  const data = extractSessionCreateJson(run.stdout);
-  const providerSessionRef = `${label}-provider-session-ref-${data.bookingId ?? data.sessionId}`;
+  const bookingId = bookingRes.json?.id;
+  assert(bookingId, `BOOKING_ID_MISSING_${label}`);
+  assert(
+    bookingRes.json?.paymentStatus === 'DEPOSIT_PENDING',
+    `BOOKING_PAYMENT_STATUS_${label}_${bookingRes.json?.paymentStatus}`,
+  );
+
+  const sessionRes = await http(`/payments/bookings/${bookingId}/session`, {
+    method: 'POST',
+    token,
+    body: {
+      businessId: BUSINESS_ID,
+      idempotencyKey: `${label}-${RUN_ID}-session`,
+      returnUrl: 'https://example.com/return',
+      cancelUrl: 'https://example.com/cancel',
+    },
+  });
+
+  assert(
+    sessionRes.status === 201,
+    `SESSION_CREATE_FAILED_${label}_${sessionRes.status}_${sessionRes.text}`,
+  );
+
+  const sessionId = sessionRes.json?.id;
+  assert(sessionId, `SESSION_ID_MISSING_${label}`);
+
+  const providerSessionRef = `${label}-provider-session-ref-${bookingId}`;
 
   await prisma.paymentSession.update({
-    where: { id: data.sessionId },
+    where: { id: sessionId },
     data: { providerSessionRef },
   });
 
+  console.log(
+    `TRACE createOpenPaymentSession:done label=${label} booking=${bookingId} session=${sessionId}`,
+  );
+
   return {
-    bookingId: data.bookingId,
-    sessionId: data.sessionId,
+    bookingId,
+    sessionId,
     providerSessionRef,
   };
 }
@@ -190,6 +206,7 @@ async function getSession(id) {
       id: true,
       status: true,
       providerSessionRef: true,
+      authorizedAt: true,
       consumedAt: true,
       cancelledAt: true,
       failedAt: true,
@@ -256,6 +273,50 @@ async function webhook(body, providerEventId, eventType) {
 async function provePaidReconcile(token) {
   const label = 'provider-reconcile-paid';
   const seed = await createOpenPaymentSession(day(0), label);
+
+  const authorizedEventId = `${label}-authorized-${seed.bookingId}`;
+  const authorizedPayload = {
+    businessId: BUSINESS_ID,
+    bookingId: seed.bookingId,
+    providerSessionRef: seed.providerSessionRef,
+    amountCents: 1500,
+  };
+
+  const authorizedRes = await reconcile(token, {
+    businessId: BUSINESS_ID,
+    bookingId: seed.bookingId,
+    provider: PROVIDER,
+    providerEventId: authorizedEventId,
+    providerSessionRef: seed.providerSessionRef,
+    eventType: PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHORIZED,
+    payload: authorizedPayload,
+  });
+
+  assert(
+    authorizedRes.status === 200,
+    `AUTHORIZED_RECONCILE_STATUS_${authorizedRes.status}_${authorizedRes.text}`,
+  );
+  assert(
+    authorizedRes.json?.processed === true,
+    'AUTHORIZED_RECONCILE_NOT_PROCESSED',
+  );
+
+  const authorizedSession = await getSession(seed.sessionId);
+  const authorizedEvent = await getEvent(authorizedEventId);
+
+  assert(
+    authorizedSession?.status === 'AUTHORIZED',
+    `AUTHORIZED_SESSION_STATUS_${authorizedSession?.status}`,
+  );
+  assert(
+    Boolean(authorizedSession?.authorizedAt),
+    'AUTHORIZED_SESSION_AUTHORIZED_AT_MISSING',
+  );
+  assert(
+    Boolean(authorizedEvent?.processedAt),
+    'AUTHORIZED_EVENT_PROCESSED_AT_MISSING',
+  );
+
   const providerEventId = `${label}-event-${seed.bookingId}`;
   const payload = {
     businessId: BUSINESS_ID,
@@ -596,15 +657,37 @@ async function proveBookingMismatchReconcile(token) {
 }
 
 async function main() {
+  console.log('TRACE main:start');
   const token = await loginOwner();
+  console.log('TRACE main:loginOwner:done');
 
+  console.log('TRACE main:provePaidReconcile:start');
   const paid = await provePaidReconcile(token);
+  console.log('TRACE main:provePaidReconcile:done');
+
+  console.log('TRACE main:proveCancelledReconcile:start');
   const cancelled = await proveCancelledReconcile(token);
+  console.log('TRACE main:proveCancelledReconcile:done');
+
+  console.log('TRACE main:proveFailedReconcile:start');
   const failed = await proveFailedReconcile(token);
+  console.log('TRACE main:proveFailedReconcile:done');
+
+  console.log('TRACE main:proveExpiredReconcile:start');
   const expired = await proveExpiredReconcile(token);
+  console.log('TRACE main:proveExpiredReconcile:done');
+
+  console.log('TRACE main:proveInvalidProviderReconcile:start');
   const invalidProvider = await proveInvalidProviderReconcile(token);
+  console.log('TRACE main:proveInvalidProviderReconcile:done');
+
+  console.log('TRACE main:proveUnsupportedEventReconcile:start');
   const unsupportedEvent = await proveUnsupportedEventReconcile(token);
+  console.log('TRACE main:proveUnsupportedEventReconcile:done');
+
+  console.log('TRACE main:proveBookingMismatchReconcile:start');
   const bookingMismatch = await proveBookingMismatchReconcile(token);
+  console.log('TRACE main:proveBookingMismatchReconcile:done');
 
   console.log(
     JSON.stringify(

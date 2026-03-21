@@ -46,7 +46,9 @@ enum DepositServiceScopeMode {
 }
 
 enum PaymentTransactionType {
+  DEPOSIT_AUTHORIZATION
   DEPOSIT_CAPTURE
+  DEPOSIT_VOID
   PARTIAL_REFUND
   REFUND
   FINAL_SETTLEMENT
@@ -56,6 +58,7 @@ enum PaymentTransactionType {
 
 enum PaymentSessionStatus {
   OPEN
+  AUTHORIZED
   CONSUMED
   EXPIRED
   CANCELLED
@@ -596,6 +599,7 @@ model PaymentSession {
   currency           String               @default("EUR")
   idempotencyKey     String?
   expiresAt          DateTime
+  authorizedAt       DateTime?
   consumedAt         DateTime?
   cancelledAt        DateTime?
   failedAt           DateTime?
