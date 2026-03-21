@@ -2,7 +2,7 @@
 set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:3001/api}"
-BASE_DATE="${DATE_YMD:-$(date -u -d '+30 day' +%F)}"
+BASE_DATE="${DATE_YMD:-2027-01-12}"
 
 day() {
   date -u -d "$BASE_DATE + $1 day" +%F
