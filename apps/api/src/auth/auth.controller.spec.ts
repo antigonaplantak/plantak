@@ -9,8 +9,8 @@ describe('AuthController', () => {
     register: jest.fn(),
     login: jest.fn(),
     refresh: jest.fn(),
-    me: jest.fn(),
-    logoutAll: jest.fn(),
+    revokeAllSessions: jest.fn(),
+    getContext: jest.fn(),
   };
 
   beforeEach(async () => {
