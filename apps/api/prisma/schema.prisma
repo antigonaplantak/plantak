@@ -58,6 +58,7 @@ enum PaymentTransactionType {
 
 enum PaymentSessionStatus {
   OPEN
+  ACTION_REQUIRED
   AUTHORIZED
   CONSUMED
   EXPIRED
@@ -594,11 +595,13 @@ model PaymentSession {
   checkoutUrl        String?
   returnUrl          String?
   cancelUrl          String?
+  challengeUrl       String?
   status             PaymentSessionStatus @default(OPEN)
   amountCents        Int
   currency           String               @default("EUR")
   idempotencyKey     String?
   expiresAt          DateTime
+  actionRequiredAt   DateTime?
   authorizedAt       DateTime?
   consumedAt         DateTime?
   cancelledAt        DateTime?

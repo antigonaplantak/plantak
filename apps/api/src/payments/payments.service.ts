@@ -34,10 +34,12 @@ export class PaymentsService {
     checkoutUrl: true,
     returnUrl: true,
     cancelUrl: true,
+    challengeUrl: true,
     status: true,
     amountCents: true,
     currency: true,
     expiresAt: true,
+    actionRequiredAt: true,
     createdAt: true,
     updatedAt: true,
   } as const;
@@ -79,10 +81,12 @@ export class PaymentsService {
     checkoutUrl: string | null;
     returnUrl: string | null;
     cancelUrl: string | null;
+    challengeUrl: string | null;
     status: string;
     amountCents: number;
     currency: string;
     expiresAt: Date;
+    actionRequiredAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -95,10 +99,12 @@ export class PaymentsService {
       checkoutUrl: session.checkoutUrl,
       returnUrl: session.returnUrl,
       cancelUrl: session.cancelUrl,
+      challengeUrl: session.challengeUrl,
       status: session.status,
       amountCents: session.amountCents,
       currency: session.currency,
       expiresAt: session.expiresAt,
+      actionRequiredAt: session.actionRequiredAt,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     };
@@ -125,6 +131,30 @@ export class PaymentsService {
     return '';
   }
 
+  private getChallengeUrl(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+
+    const rec = payload as Record<string, unknown>;
+    const candidates = [
+      rec.challengeUrl,
+      rec.challenge_url,
+      rec.redirectUrl,
+      rec.redirect_url,
+      rec.nextActionUrl,
+      rec.next_action_url,
+      rec.acsUrl,
+      rec.acs_url,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
   private getFailureReason(payload: unknown): string | null {
     if (!payload || typeof payload !== 'object') return null;
 
@@ -142,10 +172,17 @@ export class PaymentsService {
 
   private async markPaymentSessionState(input: {
     sessionId: string;
-    nextStatus: 'AUTHORIZED' | 'CONSUMED' | 'EXPIRED' | 'CANCELLED' | 'FAILED';
+    nextStatus:
+      | 'ACTION_REQUIRED'
+      | 'AUTHORIZED'
+      | 'CONSUMED'
+      | 'EXPIRED'
+      | 'CANCELLED'
+      | 'FAILED';
     eventType: string;
     providerEventId: string;
     payload: unknown;
+    challengeUrl?: string | null;
     failureReason?: string | null;
   }) {
     const now = new Date();
@@ -158,6 +195,13 @@ export class PaymentsService {
         payload: input.payload as Prisma.InputJsonValue,
       } as Prisma.InputJsonValue,
     };
+
+    if (input.nextStatus === 'ACTION_REQUIRED') {
+      data.actionRequiredAt = now;
+      data.challengeUrl = input.challengeUrl ?? null;
+    } else {
+      data.challengeUrl = null;
+    }
 
     if (input.nextStatus === 'AUTHORIZED') {
       data.authorizedAt = now;
@@ -203,6 +247,41 @@ export class PaymentsService {
         meta: input.meta,
       },
     });
+  }
+
+  private async authorizePaymentSession(input: {
+    sessionId: string;
+    bookingId: string;
+    businessId: string;
+    amountCents: number;
+    currency: string;
+    providerEventId: string;
+    eventType: string;
+    providerSessionRef: string;
+    payload: unknown;
+  }) {
+    await this.createPaymentTransaction({
+      bookingId: input.bookingId,
+      businessId: input.businessId,
+      transactionType: 'DEPOSIT_AUTHORIZATION',
+      amountCents: input.amountCents,
+      currency: input.currency,
+      meta: {
+        providerEventId: input.providerEventId,
+        eventType: input.eventType,
+        providerSessionRef: input.providerSessionRef,
+      } as Prisma.InputJsonValue,
+    });
+
+    await this.markPaymentSessionState({
+      sessionId: input.sessionId,
+      nextStatus: 'AUTHORIZED',
+      eventType: input.eventType,
+      providerEventId: input.providerEventId,
+      payload: input.payload,
+    });
+
+    return { sessionId: input.sessionId, status: 'AUTHORIZED' };
   }
 
   async createBookingPaymentSession(input: {
@@ -527,11 +606,22 @@ export class PaymentsService {
 
       const allowedStatusesByEvent = {
         [PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHORIZED]: ['OPEN'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_ACTION_REQUIRED]: ['OPEN'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHENTICATION_SUCCEEDED]: [
+          'ACTION_REQUIRED',
+        ],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHENTICATION_FAILED]: [
+          'ACTION_REQUIRED',
+        ],
         [PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID]: ['AUTHORIZED'],
         [PAYMENT_PROVIDER_EVENT.DEPOSIT_VOIDED]: ['AUTHORIZED'],
         [PAYMENT_PROVIDER_EVENT.DEPOSIT_EXPIRED]: ['OPEN'],
         [PAYMENT_PROVIDER_EVENT.DEPOSIT_CANCELLED]: ['OPEN'],
-        [PAYMENT_PROVIDER_EVENT.DEPOSIT_FAILED]: ['OPEN', 'AUTHORIZED'],
+        [PAYMENT_PROVIDER_EVENT.DEPOSIT_FAILED]: [
+          'OPEN',
+          'AUTHORIZED',
+          'ACTION_REQUIRED',
+        ],
       } as const;
 
       const allowedStatuses =
@@ -549,26 +639,67 @@ export class PaymentsService {
 
       switch (providerContract.eventType) {
         case PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHORIZED:
-          await this.createPaymentTransaction({
+          result = await this.authorizePaymentSession({
+            sessionId: session.id,
             bookingId: resolvedBookingId,
             businessId: resolvedBusinessId,
-            transactionType: 'DEPOSIT_AUTHORIZATION',
             amountCents: session.amountCents,
             currency: session.currency,
-            meta: {
-              providerEventId,
-              eventType: providerContract.eventType,
-              providerSessionRef,
-            } as Prisma.InputJsonValue,
+            providerEventId,
+            eventType: providerContract.eventType,
+            providerSessionRef,
+            payload: input.payload,
           });
+          break;
+
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_ACTION_REQUIRED: {
+          const challengeUrl = this.getChallengeUrl(input.payload);
+          if (!challengeUrl) {
+            throw new BadRequestException('challengeUrl is required');
+          }
+
           await this.markPaymentSessionState({
             sessionId: session.id,
-            nextStatus: 'AUTHORIZED',
+            nextStatus: 'ACTION_REQUIRED',
             eventType: providerContract.eventType,
             providerEventId,
             payload: input.payload,
+            challengeUrl,
           });
-          result = { sessionId: session.id, status: 'AUTHORIZED' };
+          result = {
+            sessionId: session.id,
+            status: 'ACTION_REQUIRED',
+            challengeUrl,
+          };
+          break;
+        }
+
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHENTICATION_SUCCEEDED:
+          result = await this.authorizePaymentSession({
+            sessionId: session.id,
+            bookingId: resolvedBookingId,
+            businessId: resolvedBusinessId,
+            amountCents: session.amountCents,
+            currency: session.currency,
+            providerEventId,
+            eventType: providerContract.eventType,
+            providerSessionRef,
+            payload: input.payload,
+          });
+          break;
+
+        case PAYMENT_PROVIDER_EVENT.DEPOSIT_AUTHENTICATION_FAILED:
+          await this.markPaymentSessionState({
+            sessionId: session.id,
+            nextStatus: 'FAILED',
+            eventType: providerContract.eventType,
+            providerEventId,
+            payload: input.payload,
+            failureReason:
+              this.getFailureReason(input.payload) ??
+              'Provider marked authentication failed',
+          });
+          result = { sessionId: session.id, status: 'FAILED' };
           break;
 
         case PAYMENT_PROVIDER_EVENT.DEPOSIT_PAID:
