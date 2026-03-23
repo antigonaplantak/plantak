@@ -2,8 +2,6 @@
 * @antigonaplantak
 
 # Critical domains
-/apps/api/src/payments/            @antigonaplantak
-/apps/api/scripts/proofs/payments/ @antigonaplantak
 /apps/api/prisma/                  @antigonaplantak
 /.github/workflows/                @antigonaplantak
 /apps/api/src/bookings/            @antigonaplantak
