@@ -62,6 +62,7 @@ export class ServiceProfileService {
       this.prisma.business.findFirst({
         where: { id: input.businessId },
         select: {
+          id: true,
         },
       }),
       this.prisma.staff.findFirst({
@@ -71,6 +72,7 @@ export class ServiceProfileService {
           active: true,
         },
         select: {
+          id: true,
         },
       }),
     ]);
