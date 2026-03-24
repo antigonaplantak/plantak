@@ -134,7 +134,6 @@ export class BookingsService {
     });
   }
 
-
   private getCustomerNoticeMinutes(action: 'cancel' | 'reschedule'): number {
     const envName =
       action === 'cancel'
@@ -908,7 +907,6 @@ export class BookingsService {
       if (b.status !== 'PENDING')
         throw new BadRequestException('Booking not confirmable');
 
-
       const updated = await tx.booking.update({
         where: { id: b.id },
         data: { status: 'CONFIRMED' },
@@ -1118,5 +1116,4 @@ export class BookingsService {
       nextCursor,
     };
   }
-
 }

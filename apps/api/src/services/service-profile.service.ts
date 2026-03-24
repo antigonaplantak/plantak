@@ -205,7 +205,6 @@ export class ServiceProfileService {
     const totalMin =
       finalDurationMin + finalBufferBeforeMin + finalBufferAfterMin;
 
-
     return {
       serviceId: service.id,
       serviceName: service.name,
