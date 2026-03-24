@@ -5,8 +5,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeAddonIds } from '../availability/addon-ids.util';
-import { resolveDepositPolicy } from '../payments/deposit-policy.resolver';
-import { calculateDepositAmounts } from '../payments/deposit-math.util';
 
 type ResolvedAddon = {
   id: string;
@@ -53,8 +51,6 @@ export class ServiceProfileService {
         priceCents: true,
         bufferBeforeMin: true,
         bufferAfterMin: true,
-        depositPercent: true,
-        useBusinessDepositDefault: true,
       },
     });
 
@@ -66,8 +62,7 @@ export class ServiceProfileService {
       this.prisma.business.findFirst({
         where: { id: input.businessId },
         select: {
-          depositPercentDefault: true,
-          depositScopeMode: true,
+          id: true,
         },
       }),
       this.prisma.staff.findFirst({
@@ -77,8 +72,7 @@ export class ServiceProfileService {
           active: true,
         },
         select: {
-          depositPercentDefault: true,
-          depositScopeMode: true,
+          id: true,
         },
       }),
     ]);
@@ -103,8 +97,6 @@ export class ServiceProfileService {
         priceCentsOverride: true,
         bufferBeforeMinOverride: true,
         bufferAfterMinOverride: true,
-        depositPercent: true,
-        useStaffDepositDefault: true,
       },
     });
 
@@ -213,23 +205,6 @@ export class ServiceProfileService {
     const totalMin =
       finalDurationMin + finalBufferBeforeMin + finalBufferAfterMin;
 
-    const depositPolicy = resolveDepositPolicy({
-      businessDefaultPercent: business.depositPercentDefault,
-      businessScopeMode: business.depositScopeMode,
-      serviceUseBusinessDepositDefault: service.useBusinessDepositDefault,
-      serviceDepositPercent: service.depositPercent,
-      staffDefaultPercent: staff.depositPercentDefault,
-      staffScopeMode: staff.depositScopeMode,
-      serviceStaffUseStaffDepositDefault:
-        staffAssignment.useStaffDepositDefault,
-      serviceStaffDepositPercent: staffAssignment.depositPercent,
-    });
-
-    const depositAmounts = calculateDepositAmounts(
-      finalPriceCents,
-      depositPolicy.percent,
-    );
-
     return {
       serviceId: service.id,
       serviceName: service.name,
@@ -243,11 +218,7 @@ export class ServiceProfileService {
       bufferBeforeMin: finalBufferBeforeMin,
       bufferAfterMin: finalBufferAfterMin,
       totalMin,
-      depositPercent: depositPolicy.percent,
-      depositResolvedFrom: depositPolicy.resolvedFrom,
-      amountTotalCents: depositAmounts.totalCents,
-      amountDepositCents: depositAmounts.depositCents,
-      amountRemainingCents: depositAmounts.remainingCents,
+      amountTotalCents: finalPriceCents,
     };
   }
 }

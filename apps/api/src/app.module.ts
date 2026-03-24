@@ -16,7 +16,6 @@ import { QueueDashboardModule } from './ops/queue-dashboard.module';
 import { StaffModule } from './staff/staff.module';
 import { WorkingHoursModule } from './working-hours/working-hours.module';
 import { TimeOffModule } from './time-off/time-off.module';
-import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   providers: [
@@ -24,7 +23,6 @@ import { PaymentsModule } from './payments/payments.module';
     { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor },
   ],
   imports: [
-    PaymentsModule,
     QueueDashboardModule,
     InfraModule,
     QueueModule,
