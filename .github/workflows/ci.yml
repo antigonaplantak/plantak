@@ -98,12 +98,7 @@ jobs:
         run: pnpm -C apps/api run ops:observability:proof
 
       - name: Booking gate
-        run: pnpm -C apps/api run gate:bookings        if: always()
-        run: |
-          if [ -f /tmp/plantak_api_after_gate.pid ]; then
-            kill "$(cat /tmp/plantak_api_after_gate.pid)" || true
-          fi
-          pkill -f "nest start|node dist/main|pnpm start" || true
+        run: pnpm -C apps/api run gate:bookings
 
   docker_build:
     name: Docker build (when Dockerfile exists)
